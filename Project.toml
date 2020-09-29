@@ -1,0 +1,4 @@
+name = "MLJXGBoostInterface"
+uuid = "54119dfa-1dab-4055-a167-80440f4f7a91"
+authors = ["Anthony D. Blaom <anthony.blaom@gmail.com>"]
+version = "0.1.0"
