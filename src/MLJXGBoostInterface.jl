@@ -220,7 +220,7 @@ function MMI.clean!(model::XGBoostRegressor)
 end
 
 function MMI.fit(model::XGBoostRegressor
-             , verbosity::Int     #> must be here even if unsupported in pkg
+             , verbosity::Int
              , X
              , y)
 
@@ -660,6 +660,47 @@ function MMI.predict(model::XGBoostClassifier
     predictions = MMI.UnivariateFinite(classes, prediction_probabilities')
 
     return predictions
+end
+
+
+## SERIALIZATION
+
+const XGBoostInfinite = Union{XGBoostRegressor,XGBoostCount}
+
+function xgboost_filename(filename::AbstractString)
+
+    if length(parts) < 2 || parts[end] != ".jlso"
+        error("Filename must be of the form \"my_saved_machine.jlso\". ")
+    end
+    return parts[1:end-1]*".model"
+end
+
+# for serializing the XGBoost object to a separate file:
+_save(filename::AbstractString, booster) = XGBoost.save_model(booster, filename)
+
+# for deserializing the XGBoost object:
+_restore(filename) = Booster(model_file=filename)
+
+function MLJModelInterface.save(filename::AbstractString,
+                                model::XGBoostInfinite,
+                                fitresult,
+                                report;
+                                kwargs...)
+
+    xgb_filename = xgboost_filename(filename)
+    _save(xgb_filename, fitresult)
+
+    JLSO.save(filename,
+              :model => model,
+              :report => report; kwargs...)
+
+    @info "Saving to \"$filename\" and \"xgboost_filename\" (XGBoost object). "
+    @info "Restore with `machine($filename)`. "
+end
+
+function MLJModelInterface.restore(filename::AbstractString; kwargs...)
+    dict = JLSO.load(filename)
+    return dict[:model], dict[:fitresult], dict[:report]
 end
 
 ## METADATA
