@@ -29,6 +29,16 @@ rpred = predict(plain_regressor, fitresultR, features);
 
 importances = reportR.feature_importances
 
+# serialization:
+serializable_fitresult =
+    MLJBase.save("mymodel", plain_regressor, fitresultR)
+
+restored_fitresult = MLJBase.restore("mymodel",
+                                     plain_regressor,
+                                     serializable_fitresult)
+@test predict(plain_regressor, restored_fitresult, features) ≈ rpred
+
+
 ## COUNT
 
 count_regressor = XGBoostCount(num_round=10)
@@ -39,9 +49,9 @@ Xtable = table(X)
 α = 0.1
 β = [-0.3, 0.2, -0.1]
 λ = exp.(α .+ X * β)
-y = [rand(rng, Poisson(λᵢ)) for λᵢ ∈ λ]
+ycount = [rand(rng, Poisson(λᵢ)) for λᵢ ∈ λ]
 
-fitresultC, cacheC, reportC = MLJBase.fit(count_regressor, 0, Xtable, y);
+fitresultC, cacheC, reportC = MLJBase.fit(count_regressor, 0, Xtable, ycount);
 cpred = predict(count_regressor, fitresultC, Xtable);
 info_dict(XGBoostCount)
 
@@ -96,3 +106,51 @@ yhat = predict_mode(plain_classifier, fitresult, selectrows(X, test))
 @test Set(MLJBase.classes(yhat[1])) == Set(MLJBase.classes(y[train][1]))
 
 info_dict(XGBoostClassifier)
+
+# serialization:
+serializable_fitresult =
+    MLJBase.save("mymodel", plain_classifier, fitresult)
+
+restored_fitresult = MLJBase.restore("mymodel",
+                                     plain_classifier,
+                                     serializable_fitresult)
+
+@test predict_mode(plain_classifier, restored_fitresult, selectrows(X, test)) ==
+    yhat
+
+
+## MACHINE INTEGRATION
+
+# count regressor (`count_regressor`, `Xtable` and `ycount`
+# defined above):
+
+mach = machine(count_regressor, Xtable, ycount) |> fit!
+yhat = predict(mach, Xtable)
+
+# serialize:
+io = IOBuffer()
+MLJBase.save(io, mach)
+
+# deserialize:
+seekstart(io)
+mach2 = machine(io)
+close(io)
+
+# compare:
+@test predict(mach2, Xtable) ≈ yhat
+
+
+# classifier
+mach = machine(plain_classifier, X, y) |> fit!
+yhat = predict_mode(mach, X);
+
+# serialize:
+io = IOBuffer()
+MLJBase.save(io, mach)
+
+# deserialize:
+seekstart(io)
+mach2 = machine(io)
+
+# compare:
+@test predict_mode(mach2, X) == yhat
