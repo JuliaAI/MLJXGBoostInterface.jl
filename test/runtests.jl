@@ -134,11 +134,11 @@ MLJBase.save(io, mach)
 # deserialize:
 seekstart(io)
 mach2 = machine(io)
-close(io)
+#close(io)
 
 # compare:
 @test predict(mach2, Xtable) ≈ yhat
-
+close(io)
 
 # classifier
 mach = machine(plain_classifier, X, y) |> fit!
