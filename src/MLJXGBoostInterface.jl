@@ -682,7 +682,7 @@ function MLJModelInterface.restore(filename,
                                    ::XGBoostInfinite,
                                    serializable_fitresult)
     xgb_filename = string(filename, ".tmp")
-    fitresult =  open(xgb_filename, "w") do file
+    open(xgb_filename, "w") do file
         write(file, serializable_fitresult)
     end
     fitresult = XGBoost.Booster(model_file=xgb_filename)
@@ -712,7 +712,7 @@ function MLJModelInterface.restore(filename,
     persistent_booster, a_target_element = serializable_fitresult
 
     xgb_filename = string(filename, ".tmp")
-    fitresult =  open(xgb_filename, "w") do file
+    open(xgb_filename, "w") do file
         write(file, persistent_booster)
     end
     booster = XGBoost.Booster(model_file=xgb_filename)
