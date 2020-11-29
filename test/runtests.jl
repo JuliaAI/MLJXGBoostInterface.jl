@@ -95,7 +95,7 @@ misclassification_rate = sum(yhat .!= y[test])/length(test)
 
 # check target pool preserved:
 X = (x1=rand(rng, 400), x2=rand(rng, 400), x3=rand(rng, 400))
-ycat = vcat(fill(:x, 100), fill(:y, 100), fill(:z, 200)) |>categorical
+ycat = vcat(fill('x', 100), fill('y', 100), fill('z', 200)) |>categorical
 y = identity.(ycat)
 train, test = partition(eachindex(y), 0.5)
 @test length(unique(y[train])) == 2
