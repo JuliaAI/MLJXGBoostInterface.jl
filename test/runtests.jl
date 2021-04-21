@@ -20,7 +20,6 @@ labels = features * weights;
 features = MLJBase.table(features)
 fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 0, features, labels);
 rpred = predict(plain_regressor, fitresultR, features);
-info_dict(XGBoostRegressor)
 
 plain_regressor.objective = "gamma"
 labels = abs.(labels)
@@ -53,7 +52,6 @@ ycount = [rand(rng, Poisson(λᵢ)) for λᵢ ∈ λ]
 
 fitresultC, cacheC, reportC = MLJBase.fit(count_regressor, 0, Xtable, ycount);
 cpred = predict(count_regressor, fitresultC, Xtable);
-info_dict(XGBoostCount)
 
 importances = reportC.feature_importances
 
@@ -104,8 +102,6 @@ fitresult, cache, report = MLJBase.fit(plain_classifier, 0,
                                             selectrows(X, train), y[train];)
 yhat = predict_mode(plain_classifier, fitresult, selectrows(X, test))
 @test Set(MLJBase.classes(yhat[1])) == Set(MLJBase.classes(y[train][1]))
-
-info_dict(XGBoostClassifier)
 
 # serialization:
 serializable_fitresult =
