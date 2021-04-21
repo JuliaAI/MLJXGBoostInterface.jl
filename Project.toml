@@ -9,16 +9,17 @@ Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 XGBoost = "009559a3-9522-5dbb-924b-0b6ed2b22bb9"
 
 [compat]
-MLJModelInterface = "^0.3.5,^0.4"
-Tables = "^1.0.5"
+MLJModelInterface = "0.3.5, 0.4, 1"
+Tables = "1.0.5"
 XGBoost = "1.1.1"
 julia = "1.3"
 
 [extras]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 MLJBase = "a7f614a8-145f-11e9-1d2a-a57a1082229d"
+MLJSerialization = "17bed46d-0ab5-4cd4-b792-a5c4b8547c6d"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Distributions", "MLJBase", "StableRNGs", "Test"]
+test = ["Distributions", "MLJBase", "MLJSerialization", "StableRNGs", "Test"]

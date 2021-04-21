@@ -1,4 +1,5 @@
 using MLJBase
+using MLJSerialization
 using Test
 import XGBoost
 using MLJXGBoostInterface
