@@ -11,20 +11,36 @@ rng = StableRNGs.StableRNG(123)
 @test_logs (:warn, r"Changing ") XGBoostCount(objective="wrong")
 @test_logs (:warn, r"Your") XGBoostRegressor(objective="binary:logistic")
 
-## REGRESSOR
+@testset "Binary Classification" begin
+    plain_classifier = XGBoostClassifier(num_round=100, seed=0)
 
+    N=2
+    X = (x1=rand(1000), x2=rand(1000), x3=rand(1000))
+    ycat = map(X.x1) do x
+        string(mod(round(Int, 10*x), N))
+    end |> categorical
+
+    train, test = partition(eachindex(ycat), 0.6)
+
+    #fitresult, cache, report = MLJBase.fit(plain_classifier, 1, X, ycat;)
+
+    m = machine(plain_classifier,X,ycat)
+    fit!(m,verbosity = 0)
+end
+
+## REGRESSOR
 plain_regressor = XGBoostRegressor()
 n,m = 10^3, 5 ;
 features = rand(rng, n,m);
 weights = rand(rng, -1:1,m);
 labels = features * weights;
 features = MLJBase.table(features)
-fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 0, features, labels);
+fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 1, features, labels);
 rpred = predict(plain_regressor, fitresultR, features);
 
 plain_regressor.objective = "gamma"
 labels = abs.(labels)
-fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 0, features, labels);
+fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 1, features, labels);
 rpred = predict(plain_regressor, fitresultR, features);
 
 importances = reportR.feature_importances
@@ -51,7 +67,7 @@ Xtable = table(X)
 λ = exp.(α .+ X * β)
 ycount = [rand(rng, Poisson(λᵢ)) for λᵢ ∈ λ]
 
-fitresultC, cacheC, reportC = MLJBase.fit(count_regressor, 0, Xtable, ycount);
+fitresultC, cacheC, reportC = MLJBase.fit(count_regressor, 1, Xtable, ycount);
 cpred = predict(count_regressor, fitresultC, Xtable);
 
 importances = reportC.feature_importances
@@ -68,7 +84,7 @@ ycat = map(X.x1) do x
 end |> categorical
 y = identity.(ycat) # make plain Vector with categ. elements
 train, test = partition(eachindex(y), 0.6)
-fitresult, cache, report = MLJBase.fit(plain_classifier, 0,
+fitresult, cache, report = MLJBase.fit(plain_classifier, 1,
                                             selectrows(X, train), y[train];)
 yhat = mode.(predict(plain_classifier, fitresult, selectrows(X, test)))
 misclassification_rate = sum(yhat .!= y[test])/length(test)
@@ -86,7 +102,7 @@ end |> categorical
 y = identity.(ycat) # make plain Vector with categ. elements
 
 train, test = partition(eachindex(y), 0.6)
-fitresult, cache, report = MLJBase.fit(plain_classifier, 0,
+fitresult, cache, report = MLJBase.fit(plain_classifier, 1,
                                             selectrows(X, train), y[train];)
 yhat = mode.(predict(plain_classifier, fitresult, selectrows(X, test)))
 misclassification_rate = sum(yhat .!= y[test])/length(test)
@@ -99,7 +115,7 @@ y = identity.(ycat)
 train, test = partition(eachindex(y), 0.5)
 @test length(unique(y[train])) == 2
 @test length(unique(y[test])) == 1
-fitresult, cache, report = MLJBase.fit(plain_classifier, 0,
+fitresult, cache, report = MLJBase.fit(plain_classifier, 1,
                                             selectrows(X, train), y[train];)
 yhat = predict_mode(plain_classifier, fitresult, selectrows(X, test))
 @test Set(MLJBase.classes(yhat[1])) == Set(MLJBase.classes(y[train][1]))
