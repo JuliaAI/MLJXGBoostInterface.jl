@@ -26,7 +26,7 @@ end
 generate_seed() = mod(round(Int, time()*1e8), 10000)
 
 # helper to preprocess hyper-parameters:
-function kwargs(model, silent, seed, objective)
+function kwargs(model, silent, seed, objective, eval_metric)
 
     kwargs = (booster = model.booster
               , silent = silent
@@ -60,7 +60,7 @@ function kwargs(model, silent, seed, objective)
               , tweedie_variance_power = model.tweedie_variance_power
               , objective = objective
               , base_score = model.base_score
-              , eval_metric=model.eval_metric
+              , eval_metric=eval_metric
               , seed = seed)
 
     if model.updater != "auto"
@@ -238,7 +238,7 @@ function MMI.fit(model::XGBoostRegressor
 
 
     fitresult = XGBoost.xgboost(dm, model.num_round;
-                                kwargs(model, silent, seed, objective)...)
+                                kwargs(model, silent, seed, objective,model.eval_metric)...)
 
     features = schema(X).names
     importances = [named_importance(fi, features) for
@@ -417,7 +417,7 @@ function MMI.fit(model::XGBoostCount
         model.seed == -1 ? generate_seed() : model.seed
 
     fitresult = XGBoost.xgboost(dm, model.num_round;
-                                kwargs(model, silent, seed, "count:poisson")...)
+                                kwargs(model, silent, seed, "count:poisson",model.eval_metric)...)
     features = schema(X).names
     importances = [named_importance(fi, features) for
                    fi in XGBoost.importance(fitresult)]
@@ -589,6 +589,7 @@ function MMI.fit(model::XGBoostClassifier
     a_target_element = y[1] # a CategoricalValue or CategoricalString
     num_class = length(MMI.classes(a_target_element))
 
+    # The eval metric is different depending on the class size.
     eval_metric = model.eval_metric
     if num_class == 2 && eval_metric == "mlogloss"
         eval_metric = "logloss"
@@ -599,11 +600,9 @@ function MMI.fit(model::XGBoostClassifier
 
     y_plain = MMI.int(y) .- 1 # integer relabeling should start at 0
 
-    # An idiosynchrony of xgboost is that num_class=1 for binary case.
     if(num_class==2)
         objective="binary:logistic"
         y_plain = convert(Array{Bool}, y_plain)
-        num_class = 1
     else
         objective="multi:softprob"
     end
@@ -614,11 +613,15 @@ function MMI.fit(model::XGBoostClassifier
     seed =
         model.seed == -1 ? generate_seed() : model.seed
 
-
-    result = XGBoost.xgboost(Xmatrix, label=y_plain, model.num_round;
-                             num_class=num_class,
-                             kwargs(model, silent, seed, objective)...)
-
+    if num_class == 2
+        # XGBoost API requires that num_class is not passed in when n=2.
+        result = XGBoost.xgboost(Xmatrix, label=y_plain, model.num_round;
+                             kwargs(model, silent, seed, objective,eval_metric)...)
+    else
+        result = XGBoost.xgboost(Xmatrix, label=y_plain, model.num_round;
+                                 num_class=num_class,
+                                 kwargs(model, silent, seed, objective,eval_metric)...)
+    end
     fitresult = (result, a_target_element)
 
     features = schema(X).names
