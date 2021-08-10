@@ -88,7 +88,7 @@ fitresult, cache, report = MLJBase.fit(plain_classifier, 1,
                                             selectrows(X, train), y[train];)
 yhat = mode.(predict(plain_classifier, fitresult, selectrows(X, test)))
 misclassification_rate = sum(yhat .!= y[test])/length(test)
-@test misclassification_rate < 0.01
+@test misclassification_rate < 0.015
 
 importances = report.feature_importances
 
