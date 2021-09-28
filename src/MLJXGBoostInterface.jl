@@ -61,7 +61,8 @@ function kwargs(model, silent, seed, objective, eval_metric)
               , objective = objective
               , base_score = model.base_score
               , eval_metric=eval_metric
-              , seed = seed)
+              , seed = seed
+              , nthread = model.nthread) # MD
 
     if model.updater != "auto"
         return merge(kwargs, (updater=model.updater,))
@@ -109,6 +110,7 @@ mutable struct XGBoostRegressor <:MMI.Deterministic
     base_score::Float64
     eval_metric
     seed::Int
+    nthread::Int # MD
 end
 
 """
@@ -159,7 +161,8 @@ function XGBoostRegressor(
     ,objective="reg:squarederror"
     ,base_score=0.5
     ,eval_metric="rmse"
-    ,seed=0)
+    ,seed=0
+    ,nthread = 1)
 
     model = XGBoostRegressor(
     num_round
@@ -196,7 +199,8 @@ function XGBoostRegressor(
     ,objective
     ,base_score
     ,eval_metric
-    ,seed)
+    ,seed
+    ,nthread) #MD
 
      message = MMI.clean!(model)
      isempty(message) || @warn message
@@ -298,6 +302,7 @@ mutable struct XGBoostCount <:MMI.Deterministic
     base_score::Float64
     eval_metric
     seed::Int
+    nthread::Int
 end
 
 
@@ -348,7 +353,8 @@ function XGBoostCount(
     ,objective="count:poisson"
     ,base_score=0.5
     ,eval_metric="rmse"
-    ,seed=0)
+    ,seed=0
+    ,nthread = 1)
 
     model = XGBoostCount(
     num_round
@@ -385,7 +391,8 @@ function XGBoostCount(
     ,objective
     ,base_score
     ,eval_metric
-    ,seed)
+    ,seed
+    ,nthread)
 
      message = MMI.clean!(model)
      isempty(message) || @warn message
@@ -475,6 +482,7 @@ mutable struct XGBoostClassifier <:MMI.Probabilistic
     base_score::Float64
     eval_metric
     seed::Int
+    nthread::Int
 end
 
 """
@@ -525,7 +533,8 @@ function XGBoostClassifier(
     ,objective="automatic"
     ,base_score=0.5
     ,eval_metric="mlogloss"
-    ,seed=0)
+    ,seed=0
+    ,nthread = 1)
 
     model = XGBoostClassifier(
     num_round
@@ -562,7 +571,8 @@ function XGBoostClassifier(
     ,objective
     ,base_score
     ,eval_metric
-    ,seed)
+    ,seed
+    ,nthread)
 
      message = MMI.clean!(model)           #> future proof by including these
      isempty(message) || @warn message #> two lines even if no clean! defined below
