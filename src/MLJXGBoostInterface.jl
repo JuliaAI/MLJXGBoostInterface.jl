@@ -676,62 +676,81 @@ function MMI.predict(model::XGBoostClassifier
 end
 
 
-## SERIALIZATION - REGRESSOR AND COUNT
+# # SERIALIZATION
+
+
+# ## Helpers
+
+"""
+    persistent(booster)
+
+Private method.
+
+Return a persistent (ie, Julia-serializable) representation of the
+XGBoost.jl model `booster`.
+
+Restore the model with [`booster`](@ref)
+
+"""
+function persistent(booster)
+
+    # this implemenation is not ideal; see
+    # https://github.com/dmlc/XGBoost.jl/issues/103
+
+    xgb_file, io = mktemp()
+    close(io)
+
+    XGBoost.save(booster, xgb_file)
+    persistent_booster = read(xgb_file)
+    rm(xgb_file)
+    return persistent_booster
+end
+
+"""
+    booster(persistent)
+
+Private method.
+
+Return the XGBoost.jl model which has `persistent` as its persistent
+(Julia-serializable) representation. See [`persistent`](@ref) method.
+
+"""
+function booster(persistent)
+
+    xgb_file, io = mktemp()
+    write(io, persistent)
+    close(io)
+    booster = XGBoost.Booster(model_file=xgb_file)
+    rm(xgb_file)
+
+    return booster
+end
+
+
+# ## Regressor and Count
 
 const XGBoostInfinite = Union{XGBoostRegressor,XGBoostCount}
 
-function MLJModelInterface.save(filename,
-                                ::XGBoostInfinite,
-                                fitresult; # `XGBoost.Booster` object
-                                kwargs...)
-    xgb_filename = string(filename, ".xgboost.model")
-    XGBoost.save(fitresult, xgb_filename)
-    serializable_fitresult = read(xgb_filename)
-    @info "Additional XGBoost serialization file \"$xgb_filename\" generated. "
-    return serializable_fitresult
-end
+MLJModelInterface.save(::XGBoostInfinite, fitresult; kwargs...) =
+    persistent(fitresult)
 
-function MLJModelInterface.restore(filename,
-                                   ::XGBoostInfinite,
-                                   serializable_fitresult)
-    xgb_filename = string(filename, ".tmp")
-    open(xgb_filename, "w") do file
-        write(file, serializable_fitresult)
-    end
-    fitresult = XGBoost.Booster(model_file=xgb_filename)
-    rm(xgb_filename)
-    return fitresult
-end
+MLJModelInterface.restore(::XGBoostInfinite, serializable_fitresult) =
+                          booster(serializable_fitresult)
 
 
-## SERIALIZATION - CLASSIFIER
+# ## Classifier
 
-function MLJModelInterface.save(filename,
-                                ::XGBoostClassifier,
+function MLJModelInterface.save(::XGBoostClassifier,
                                 fitresult;
                                 kwargs...)
     booster, a_target_element = fitresult
-
-    xgb_filename = string(filename, ".xgboost.model")
-    XGBoost.save(booster, xgb_filename)
-    persistent_booster = read(xgb_filename)
-    @info "Additional XGBoost serialization file \"$xgb_filename\" generated. "
-    return (persistent_booster, a_target_element)
+    return (persistent(booster), a_target_element)
 end
 
-function MLJModelInterface.restore(filename,
-                                   ::XGBoostClassifier,
+function MLJModelInterface.restore(::XGBoostClassifier,
                                    serializable_fitresult)
-    persistent_booster, a_target_element = serializable_fitresult
-
-    xgb_filename = string(filename, ".tmp")
-    open(xgb_filename, "w") do file
-        write(file, persistent_booster)
-    end
-    booster = XGBoost.Booster(model_file=xgb_filename)
-    rm(xgb_filename)
-    fitresult = (booster, a_target_element)
-    return fitresult
+    persistent, a_target_element = serializable_fitresult
+    return (booster(persistent), a_target_element)
 end
 
 

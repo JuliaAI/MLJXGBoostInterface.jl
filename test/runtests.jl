@@ -1,5 +1,4 @@
 using MLJBase
-using MLJSerialization
 using Test
 import XGBoost
 using MLJXGBoostInterface
@@ -24,7 +23,7 @@ rng = StableRNGs.StableRNG(123)
 
     #fitresult, cache, report = MLJBase.fit(plain_classifier, 1, X, ycat;)
 
-    m = machine(plain_classifier,X,ycat)
+    m = machine(plain_classifier, X, ycat)
     fit!(m,verbosity = 0)
 end
 
@@ -35,22 +34,21 @@ features = rand(rng, n,m);
 weights = rand(rng, -1:1,m);
 labels = features * weights;
 features = MLJBase.table(features)
-fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 1, features, labels);
+fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 0, features, labels);
 rpred = predict(plain_regressor, fitresultR, features);
 
 plain_regressor.objective = "gamma"
 labels = abs.(labels)
-fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 1, features, labels);
+fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 0, features, labels);
 rpred = predict(plain_regressor, fitresultR, features);
 
 importances = reportR.feature_importances
 
 # serialization:
 serializable_fitresult =
-    MLJBase.save("mymodel", plain_regressor, fitresultR)
+    MLJBase.save(plain_regressor, fitresultR);
 
-restored_fitresult = MLJBase.restore("mymodel",
-                                     plain_regressor,
+restored_fitresult = MLJBase.restore(plain_regressor,
                                      serializable_fitresult)
 @test predict(plain_regressor, restored_fitresult, features) ≈ rpred
 
@@ -67,7 +65,7 @@ Xtable = table(X)
 λ = exp.(α .+ X * β)
 ycount = [rand(rng, Poisson(λᵢ)) for λᵢ ∈ λ]
 
-fitresultC, cacheC, reportC = MLJBase.fit(count_regressor, 1, Xtable, ycount);
+fitresultC, cacheC, reportC = MLJBase.fit(count_regressor, 0, Xtable, ycount);
 cpred = predict(count_regressor, fitresultC, Xtable);
 
 importances = reportC.feature_importances
@@ -84,7 +82,7 @@ ycat = map(X.x1) do x
 end |> categorical
 y = identity.(ycat) # make plain Vector with categ. elements
 train, test = partition(eachindex(y), 0.6)
-fitresult, cache, report = MLJBase.fit(plain_classifier, 1,
+fitresult, cache, report = MLJBase.fit(plain_classifier, 0,
                                             selectrows(X, train), y[train];)
 yhat = mode.(predict(plain_classifier, fitresult, selectrows(X, test)))
 misclassification_rate = sum(yhat .!= y[test])/length(test)
@@ -102,7 +100,7 @@ end |> categorical
 y = identity.(ycat) # make plain Vector with categ. elements
 
 train, test = partition(eachindex(y), 0.6)
-fitresult, cache, report = MLJBase.fit(plain_classifier, 1,
+fitresult, cache, report = MLJBase.fit(plain_classifier, 0,
                                             selectrows(X, train), y[train];)
 yhat = mode.(predict(plain_classifier, fitresult, selectrows(X, test)))
 misclassification_rate = sum(yhat .!= y[test])/length(test)
@@ -115,17 +113,16 @@ y = identity.(ycat)
 train, test = partition(eachindex(y), 0.5)
 @test length(unique(y[train])) == 2
 @test length(unique(y[test])) == 1
-fitresult, cache, report = MLJBase.fit(plain_classifier, 1,
+fitresult, cache, report = MLJBase.fit(plain_classifier, 0,
                                             selectrows(X, train), y[train];)
 yhat = predict_mode(plain_classifier, fitresult, selectrows(X, test))
 @test Set(MLJBase.classes(yhat[1])) == Set(MLJBase.classes(y[train][1]))
 
 # serialization:
 serializable_fitresult =
-    MLJBase.save("mymodel", plain_classifier, fitresult)
+    MLJBase.save(plain_classifier, fitresult)
 
-restored_fitresult = MLJBase.restore("mymodel",
-                                     plain_classifier,
+restored_fitresult = MLJBase.restore(plain_classifier,
                                      serializable_fitresult)
 
 @test predict_mode(plain_classifier, restored_fitresult, selectrows(X, test)) ==
@@ -137,7 +134,8 @@ restored_fitresult = MLJBase.restore("mymodel",
 # count regressor (`count_regressor`, `Xtable` and `ycount`
 # defined above):
 
-mach = machine(count_regressor, Xtable, ycount) |> fit!
+mach = machine(count_regressor, Xtable, ycount)
+fit!(mach, verbosity=0)
 yhat = predict(mach, Xtable)
 
 # serialize:
@@ -154,7 +152,8 @@ close(io)
 
 
 # classifier
-mach = machine(plain_classifier, X, y) |> fit!
+mach = machine(plain_classifier, X, y)
+fit!(mach, verbosity=0)
 yhat = predict_mode(mach, X);
 
 # serialize:
