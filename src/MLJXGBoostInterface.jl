@@ -618,7 +618,7 @@ function MMI.fit(model::XGBoostClassifier
 
     if(num_class==2)
         objective="binary:logistic"
-        y_plain = convert(Array{Bool}, y_plain_)
+        y_plain_ = convert(Array{Bool}, y_plain_)
     else
         objective="multi:softprob"
     end
