@@ -12,6 +12,7 @@ const MMI = MLJModelInterface
 import Tables: schema
 
 import XGBoost
+import SparseArrays
 
 # helper for feature importances:
 # XGBoost used "f
@@ -223,6 +224,11 @@ function MMI.clean!(model::XGBoostRegressor)
     return warning
 end
 
+# For `XGBoost.DMatrix(Xmatrix, y)` `Xmatrix` must either be a julia `Array` or
+# a `SparseMatrixCSC` while `y` must be a `Vector` 
+_to_array(x::Union{Array, SparseArrays.SparseMatrixCSC}) = x
+_to_array(x::AbstractArray) = copyto!(similar(Array{eltype(x)}, axes(x)), x) 
+
 function MMI.fit(model::XGBoostRegressor
              , verbosity::Int
              , X
@@ -230,8 +236,8 @@ function MMI.fit(model::XGBoostRegressor
 
              silent =
                  verbosity > 0 ?  false : true
-    Xmatrix = MMI.matrix(X)
-    dm = XGBoost.DMatrix(Xmatrix,label=y)
+    Xmatrix = _to_array(MMI.matrix(X))
+    dm = XGBoost.DMatrix(Xmatrix, label=_to_array(y))
 
     objective =
         model.objective in ["linear", "gamma", "tweedie"] ?
@@ -259,7 +265,7 @@ end
 function MMI.predict(model::XGBoostRegressor
         , fitresult
         , Xnew)
-    Xmatrix = MMI.matrix(Xnew)
+    Xmatrix = _to_array(MMI.matrix(Xnew))
     return XGBoost.predict(fitresult, Xmatrix)
 end
 
@@ -417,8 +423,8 @@ function MMI.fit(model::XGBoostCount
 
     silent = verbosity > 0 ?  false : true
 
-    Xmatrix = MMI.matrix(X)
-    dm = XGBoost.DMatrix(Xmatrix,label=y)
+    Xmatrix = _to_array(MMI.matrix(X))
+    dm = XGBoost.DMatrix(Xmatrix, label=_to_array(y))
 
     seed =
         model.seed == -1 ? generate_seed() : model.seed
@@ -439,7 +445,7 @@ end
 function MMI.predict(model::XGBoostCount
         , fitresult
         , Xnew)
-    Xmatrix = MMI.matrix(Xnew)
+    Xmatrix = _to_array(MMI.matrix(Xnew))
     return XGBoost.predict(fitresult, Xmatrix)
 end
 
@@ -594,7 +600,7 @@ function MMI.fit(model::XGBoostClassifier
                      , verbosity::Int     #> must be here even if unsupported in pkg
                      , X
                      , y)
-    Xmatrix = MMI.matrix(X)
+    Xmatrix = _to_array(MMI.matrix(X))
 
     a_target_element = y[1] # a CategoricalValue or CategoricalString
     num_class = length(MMI.classes(a_target_element))
@@ -608,14 +614,16 @@ function MMI.fit(model::XGBoostClassifier
         eval_metric = "mlogloss"
     end
 
-    y_plain = MMI.int(y) .- 1 # integer relabeling should start at 0
+    y_plain_ = MMI.int(y) .- 1 # integer relabeling should start at 0
 
     if(num_class==2)
         objective="binary:logistic"
-        y_plain = convert(Array{Bool}, y_plain)
+        y_plain_ = convert(Array{Bool}, y_plain_)
     else
         objective="multi:softprob"
     end
+    
+    y_plain = _to_array(y_plain_)
 
     silent =
         verbosity > 0 ?  false : true
@@ -655,7 +663,7 @@ function MMI.predict(model::XGBoostClassifier
     decode = MMI.decoder(a_target_element)
     classes = MMI.classes(a_target_element)
 
-    Xmatrix = MMI.matrix(Xnew)
+    Xmatrix = _to_array(MMI.matrix(Xnew))
     XGBpredictions = XGBoost.predict(result, Xmatrix)
 
     nlevels = length(classes)

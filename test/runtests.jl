@@ -63,9 +63,16 @@ Xtable = table(X)
 α = 0.1
 β = [-0.3, 0.2, -0.1]
 λ = exp.(α .+ X * β)
-ycount = [rand(rng, Poisson(λᵢ)) for λᵢ ∈ λ]
+ycount_ = [rand(rng, Poisson(λᵢ)) for λᵢ ∈ λ]
+ycount = @view(ycount_[:]) # intention is to simulate issue #17
 
 fitresultC, cacheC, reportC = MLJBase.fit(count_regressor, 0, Xtable, ycount);
+fitresultC_, cacheC_, reportC_ = MLJBase.fit(count_regressor, 0, Xtable, ycount_);
+# the `cacheC` and `reportC` should be same for both models but the 
+# `fitresultC`s might be different since they may have different pointers to same
+# information. 
+@test cacheC == cacheC_
+@test reportC == reportC_
 cpred = predict(count_regressor, fitresultC, Xtable);
 
 importances = reportC.feature_importances
@@ -102,6 +109,15 @@ y = identity.(ycat) # make plain Vector with categ. elements
 train, test = partition(eachindex(y), 0.6)
 fitresult, cache, report = MLJBase.fit(plain_classifier, 0,
                                             selectrows(X, train), y[train];)
+fitresult_, cache_, report_ = MLJBase.fit(
+    plain_classifier, 0, selectrows(X, train), @view(y[train]);
+) # mimick issue #17
+# the `cache` and `report` should be same for both models but the 
+# `fitresult` might be different since they may have different pointers to same
+# information. 
+@test cache == cache_
+@test report == report_
+
 yhat = mode.(predict(plain_classifier, fitresult, selectrows(X, test)))
 misclassification_rate = sum(yhat .!= y[test])/length(test)
 @test misclassification_rate < 0.01
@@ -127,7 +143,6 @@ restored_fitresult = MLJBase.restore(plain_classifier,
 
 @test predict_mode(plain_classifier, restored_fitresult, selectrows(X, test)) ==
     yhat
-
 
 ## MACHINE INTEGRATION
 
