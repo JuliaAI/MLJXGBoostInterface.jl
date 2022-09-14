@@ -40,6 +40,7 @@ function kwargs(model, silent, seed, objective, eval_metric)
               , subsample = model.subsample
               , colsample_bytree = model.colsample_bytree
               , colsample_bylevel = model.colsample_bylevel
+              , colsample_bynode = model.colsample_bynode
               , lambda = model.lambda
               , alpha = model.alpha
               , tree_method = model.tree_method
@@ -87,6 +88,7 @@ mutable struct XGBoostRegressor <:MMI.Deterministic
     subsample::Float64
     colsample_bytree::Float64
     colsample_bylevel::Float64
+    colsample_bynode::Float64
     lambda::Float64
     alpha::Float64
     tree_method::String
@@ -139,6 +141,7 @@ function XGBoostRegressor(
     ,subsample=1
     ,colsample_bytree=1
     ,colsample_bylevel=1
+    ,colsample_bynode=1
     ,lambda=1
     ,alpha=0
     ,tree_method="auto"
@@ -177,6 +180,7 @@ function XGBoostRegressor(
     ,subsample
     ,colsample_bytree
     ,colsample_bylevel
+    ,colsample_bynode
     ,lambda
     ,alpha
     ,tree_method
@@ -284,6 +288,7 @@ mutable struct XGBoostCount <:MMI.Deterministic
     subsample::Float64
     colsample_bytree::Float64
     colsample_bylevel::Float64
+    colsample_bynode::Float64
     lambda::Float64
     alpha::Float64
     tree_method::String
@@ -336,6 +341,7 @@ function XGBoostCount(
     ,subsample=1
     ,colsample_bytree=1
     ,colsample_bylevel=1
+    ,colsample_bynode=1,
     ,lambda=1
     ,alpha=0
     ,tree_method="auto"
@@ -374,6 +380,7 @@ function XGBoostCount(
     ,subsample
     ,colsample_bytree
     ,colsample_bylevel
+    ,colsample_bynode
     ,lambda
     ,alpha
     ,tree_method
@@ -464,6 +471,7 @@ mutable struct XGBoostClassifier <:MMI.Probabilistic
     subsample::Float64
     colsample_bytree::Float64
     colsample_bylevel::Float64
+    colsample_bynode::Float64
     lambda::Float64
     alpha::Float64
     tree_method::String
@@ -516,6 +524,7 @@ function XGBoostClassifier(
     ,subsample=1
     ,colsample_bytree=1
     ,colsample_bylevel=1
+    ,colsample_bynode=1
     ,lambda=1
     ,alpha=0
     ,tree_method="auto"
@@ -554,6 +563,7 @@ function XGBoostClassifier(
     ,subsample
     ,colsample_bytree
     ,colsample_bylevel
+    ,colsample_bynode
     ,lambda
     ,alpha
     ,tree_method
