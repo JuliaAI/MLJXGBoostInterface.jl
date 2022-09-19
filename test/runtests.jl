@@ -1,3 +1,4 @@
+using MLJTestIntegration
 using MLJBase
 using Test
 import XGBoost
@@ -68,9 +69,9 @@ ycount = @view(ycount_[:]) # intention is to simulate issue #17
 
 fitresultC, cacheC, reportC = MLJBase.fit(count_regressor, 0, Xtable, ycount);
 fitresultC_, cacheC_, reportC_ = MLJBase.fit(count_regressor, 0, Xtable, ycount_);
-# the `cacheC` and `reportC` should be same for both models but the 
+# the `cacheC` and `reportC` should be same for both models but the
 # `fitresultC`s might be different since they may have different pointers to same
-# information. 
+# information.
 @test cacheC == cacheC_
 @test reportC == reportC_
 cpred = predict(count_regressor, fitresultC, Xtable);
@@ -112,9 +113,9 @@ fitresult, cache, report = MLJBase.fit(plain_classifier, 0,
 fitresult_, cache_, report_ = MLJBase.fit(
     plain_classifier, 0, selectrows(X, train), @view(y[train]);
 ) # mimick issue #17
-# the `cache` and `report` should be same for both models but the 
+# the `cache` and `report` should be same for both models but the
 # `fitresult` might be different since they may have different pointers to same
-# information. 
+# information.
 @test cache == cache_
 @test report == report_
 
@@ -181,3 +182,41 @@ mach2 = machine(io)
 
 # compare:
 @test predict_mode(mach2, X) == yhat
+
+@testset "generic interface tests" begin
+    @testset "XGBoostRegressor" begin
+        failures, summary = MLJTestIntegration.test(
+            [XGBoostRegressor,],
+            MLJTestIntegration.make_regression()...;
+            mod=@__MODULE__,
+            verbosity=0, # bump to debug
+            throw=false, # set to true to debug
+        )
+        @test isempty(failures)
+    end
+    @testset "XGBoostCount" begin
+        failures, summary = MLJTestIntegration.test(
+            [XGBoostCount],
+            MLJTestIntegration.make_count()...;
+            mod=@__MODULE__,
+            verbosity=0, # bump to debug
+            throw=false, # set to true to debug
+        )
+        @test isempty(failures)
+    end
+    @testset "XGBoostClassifier" begin
+        for data in [
+            MLJTestIntegration.make_binary(),
+            MLJTestIntegration.make_multiclass(),
+        ]
+            failures, summary = MLJTestIntegration.test(
+                [XGBoostClassifier],
+                data...;
+                mod=@__MODULE__,
+                verbosity=0, # bump to debug
+                throw=false, # set to true to debug
+            )
+            @test isempty(failures)
+        end
+    end
+end
