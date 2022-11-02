@@ -2,9 +2,10 @@ using MLJBase
 using Test
 import XGBoost
 using MLJXGBoostInterface
+using MLJTestIntegration
 using Distributions
 import StableRNGs
-rng = StableRNGs.StableRNG(123)
+const rng = StableRNGs.StableRNG(123)
 
 @test_logs (:warn, r"Constraint ") XGBoostClassifier(objective="wrong")
 @test_logs (:warn, r"Constraint ") XGBoostCount(objective="wrong")
@@ -193,3 +194,42 @@ end
     # compare:
     @test predict_mode(mach2, X) == yhat
 end
+
+@testset "generic interface tests" begin
+    @testset "XGBoostRegressor" begin
+        failures, summary = MLJTestIntegration.test(
+            [XGBoostRegressor,],
+            MLJTestIntegration.make_regression()...;
+            mod=@__MODULE__,
+            verbosity=0, # bump to debug
+            throw=false, # set to true to debug
+        )
+        @test isempty(failures)
+    end
+    @testset "XGBoostCount" begin
+        failures, summary = MLJTestIntegration.test(
+            [XGBoostCount],
+            MLJTestIntegration.make_count()...;
+            mod=@__MODULE__,
+            verbosity=0, # bump to debug
+            throw=false, # set to true to debug
+        )
+        @test isempty(failures)
+    end
+    @testset "XGBoostClassifier" begin
+        for data in [
+            MLJTestIntegration.make_binary(),
+            MLJTestIntegration.make_multiclass(),
+        ]
+            failures, summary = MLJTestIntegration.test(
+                [XGBoostClassifier],
+                data...;
+                mod=@__MODULE__,
+                verbosity=0, # bump to debug
+                throw=false, # set to true to debug
+            )
+            @test isempty(failures)
+        end
+    end
+end
+

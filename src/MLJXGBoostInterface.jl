@@ -7,18 +7,10 @@ const PKG = "MLJXGBoostInterface"
 
 using Tables: schema
 
-import XGBoost
-using XGBoost: DMatrix, xgboost
+import XGBoost as XGB
+using XGBoost: DMatrix, Booster, xgboost
 
 import SparseArrays
-
-# helper for feature importances:
-# XGBoost used "f
-function named_importance(fi::XGBoost.FeatureImportance, features)
-
-    new_fname = features[parse(Int, fi.fname[2:end]) + 1] |> string
-    XGBoost.FeatureImportance(new_fname, fi.gain, fi.cover, fi.freq)
-end
 
 
 abstract type XGBoostAbstractRegressor <: MMI.Deterministic end
@@ -53,9 +45,7 @@ validate_count_objective(obj) = _validate_objective(obj, ("count:", "rank:"))
 validate_class_objective(obj) = _validate_objective(obj, ("binary:", "multi:"))
 
 
-function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, eval::AbstractString,
-                   objvalidate::Symbol,
-                  )
+function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, objvalidate::Symbol)
     quote
         MMI.@mlj_model mutable struct $name <: $absname
             test::Int = 1::(_ ≥ 0)
@@ -94,8 +84,9 @@ function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, eval::Abs
             tweedie_variance_power::Float64 = 1.5::(1 < _ < 2)
             objective = $obj :: $objvalidate(_)
             base_score::Float64 = 0.5
-            eval_metric = $eval
+            watchlist = nothing  # if this is nothing we will not pass it so as to use default
             nthread::Int = Base.Threads.nthreads()::(_ ≥ 0)
+            importance_type::Union{Nothing,String} = "gain"
             seed::Union{Int,Nothing} = nothing  # nothing will use built in default
         end
 
@@ -103,88 +94,55 @@ function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, eval::Abs
 end
 
 
-eval(modelexpr(:XGBoostRegressor, :XGBoostAbstractRegressor, "reg:squarederror", "rmse", :validate_reg_objective))
+eval(modelexpr(:XGBoostRegressor, :XGBoostAbstractRegressor, "reg:squarederror", :validate_reg_objective))
 
-function kwargs(model, verbosity::Integer, obj, eval=nothing)
-    fn = fieldnames(typeof(model))
+function kwargs(model, verbosity::Integer, obj)
+    excluded = [:importance_type]
+    fn = filter(∉(excluded), fieldnames(typeof(model)))
     o = NamedTuple(n=>getfield(model, n) for n ∈ fn if !isnothing(getfield(model, n)))
     o = merge(o, (silent=(verbosity == 0),))
-    isnothing(eval) || (o = merge(o, (eval=eval,)))
     merge(o, (objective=_fix_objective(obj),))
 end
 
-# For `XGBoost.DMatrix(Xmatrix, y)` `Xmatrix` must either be a julia `Array` or
-# a `SparseMatrixCSC` while `y` must be a `Vector` 
-_to_array(x::Union{Array, SparseArrays.SparseMatrixCSC}) = x
-_to_array(x::AbstractArray) = copyto!(similar(Array{eltype(x)}, axes(x)), x) 
-
 function importances(X, r)
     fs = schema(X).names
-    [named_importance(fi, fs) for fi ∈ XGBoost.importance(r)]
+    [named_importance(fi, fs) for fi ∈ XGB.importance(r)]
+end
+
+function _getreport(b::Booster, model)
+    isnothing(model.importance_type) ? (;) : (feature_importances=XGB.importance(b, model.importance_type),)
 end
 
 function MMI.fit(model::XGBoostAbstractRegressor, verbosity::Integer, X, y)
-    Xmatrix = _to_array(MMI.matrix(X))
-    dm = DMatrix(Xmatrix, label=_to_array(y))
-
-    r = xgboost(dm, model.num_round; kwargs(model, verbosity, model.objective)...)
-
-    report = (feature_importances=importances(X, r),)
-
-    (r, nothing, report)
+    dm = DMatrix(MMI.matrix(X), float(y))
+    b = xgboost(dm; kwargs(model, verbosity, model.objective)...)
+    (b, nothing, _getreport(b, model))
 end
 
-function MMI.predict(model::XGBoostAbstractRegressor, fitresult, Xnew)
-    Xmatrix = _to_array(MMI.matrix(Xnew))
-    XGBoost.predict(fitresult, Xmatrix)
-end
+MMI.predict(model::XGBoostAbstractRegressor, fitresult, Xnew) = XGB.predict(fitresult, Xnew)
 
 
-eval(modelexpr(:XGBoostCount, :XGBoostAbstractRegressor, "count:poisson", "rmse", :validate_count_objective))
+eval(modelexpr(:XGBoostCount, :XGBoostAbstractRegressor, "count:poisson", :validate_count_objective))
 
 
-eval(modelexpr(:XGBoostClassifier, :XGBoostAbstractClassifier, "automatic", "mlogloss", :validate_class_objective))
+eval(modelexpr(:XGBoostClassifier, :XGBoostAbstractClassifier, "automatic", :validate_class_objective))
 
 function MMI.fit(model::XGBoostClassifier
                  , verbosity::Int     #> must be here even if unsupported in pkg
                  , X
                  , y)
-    Xmatrix = _to_array(MMI.matrix(X))
-
     a_target_element = y[1] # a CategoricalValue or CategoricalString
     nclass = length(MMI.classes(a_target_element))
 
-    # The eval metric is different depending on the class size.
-    eval_metric = model.eval_metric
-    if nclass == 2 && eval_metric == "mlogloss"
-        eval_metric = "logloss"
-    end
-    if nclass > 2 && eval_metric == "logloss"
-        eval_metric = "mlogloss"
-    end
+    objective = nclass == 2 ? "binary:logistic" : "multi:softprob"
 
-    y_plain_ = MMI.int(y) .- 1 # integer relabeling should start at 0
+    # libxgboost wants float labels
+    dm = DMatrix(MMI.matrix(X), float(MMI.int(y) .- 1))
 
-    if nclass == 2
-        objective = "binary:logistic"
-        y_plain_ = convert(Array{Bool}, y_plain_)
-    else
-        objective = "multi:softprob"
-    end
+    b = xgboost(dm; kwargs(model, verbosity, objective)..., num_class=nclass)
+    fr = (b, a_target_element)
 
-    y_plain = _to_array(y_plain_)
-
-    nclass_arg = nclass == 2 ? (;) : (num_class=nclass,)
-
-    r = xgboost(Xmatrix, label=y_plain, model.num_round;
-                nclass_arg...,
-                kwargs(model, verbosity, objective, eval_metric)...
-               )
-    fr = (r, a_target_element)
-
-    report = (feature_importances=importances(X, r), )
-
-    (fr, nothing, report)
+    (fr, nothing, _getreport(b, model))
 end
 
 function MMI.predict(model::XGBoostClassifier, fitresult, Xnew)
@@ -192,19 +150,18 @@ function MMI.predict(model::XGBoostClassifier, fitresult, Xnew)
     decode = MMI.decoder(a_target_element)
     classes = MMI.classes(a_target_element)
 
-    Xmatrix = _to_array(MMI.matrix(Xnew))
-    XGBpredictions = XGBoost.predict(result, Xmatrix)
+    o = XGB.predict(result, MMI.matrix(Xnew))
 
     nlevels = length(classes)
     npatterns = MMI.nrows(Xnew)
 
     if nlevels == 2
-        true_class_probabilities = reshape(XGBpredictions, 1, npatterns)
+        true_class_probabilities = reshape(o, 1, npatterns)
         false_class_probabilities = 1 .- true_class_probabilities
-        XGBpredictions = vcat(false_class_probabilities, true_class_probabilities)
+        o = vcat(false_class_probabilities, true_class_probabilities)
     end
 
-    prediction_probabilities = reshape(XGBpredictions, nlevels, npatterns)
+    prediction_probabilities = reshape(o, nlevels, npatterns)
 
     # note we use adjoint of above:
     MMI.UnivariateFinite(classes, prediction_probabilities')
@@ -214,56 +171,17 @@ end
 # # SERIALIZATION
 
 
-"""
-    _persistent(booster)
+_save(fr; kw...) = XGB.save(fr, Vector{UInt8}; kw...)
 
-Private method.
+_restore(fr) = XGB.load(Booster, fr)
 
-Return a persistent (ie, Julia-serializable) representation of the
-XGBoost.jl model `booster`.
+MMI.save(::XGBoostAbstractRegressor, fr; kw...) = _save(fr; kw...)
 
-Restore the model with [`booster`](@ref)
-"""
-function _persistent(booster)
-    # this implemenation is not ideal; see
-    # https://github.com/dmlc/XGBoost.jl/issues/103
-    file = tempname()
-    XGBoost.save(booster, file)
-    persistent_booster = read(file)
-    rm(file)
-    persistent_booster
-end
+MMI.restore(::XGBoostAbstractRegressor, fr; kw...) = _restore(fr)
 
-"""
-    _booster(persistent)
+MMI.save(::XGBoostClassifier, fr; kw...) = (_save(fr[1]; kw...), fr[2])
 
-Private method.
-
-Return the XGBoost.jl model which has `persistent` as its persistent
-(Julia-serializable) representation. See [`persistent`](@ref) method.
-"""
-function _booster(persistent)
-    mktemp() do file, io
-        write(io, persistent)
-        close(io)
-        XGBoost.Booster(model_file=file)
-    end
-end
-
-
-MLJModelInterface.save(::XGBoostAbstractRegressor, fr; kw...) = _persistent(fr)
-
-MLJModelInterface.restore(::XGBoostAbstractRegressor, fr) = _booster(fr)
-
-function MLJModelInterface.save(::XGBoostClassifier, fr; kw...)
-    (booster, a_target_element) = fr
-    (_persistent(booster), a_target_element)
-end
-
-function MLJModelInterface.restore(::XGBoostClassifier, fr)
-    (persistent, a_target_element) = fr
-    (_booster(persistent), a_target_element)
-end
+MMI.restore(::XGBoostClassifier, fr) = (_restore(fr[1]), fr[2])
 
 MLJModelInterface.reports_feature_importances(::Type{XGBoostAbstractRegressor}) = true
 MLJModelInterface.reports_feature_importances(::Type{XGBoostAbstractClassifier}) = true
@@ -286,17 +204,17 @@ MMI.docstring(::Type{<:XGBoostRegressor}) =
 MMI.load_path(::Type{<:XGBoostCount}) = "$PKG.XGBoostCount"
 MMI.input_scitype(::Type{<:XGBoostCount}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostCount}) = AbstractVector{Count}
-MMI.docstring(::Type{<:XGBoostCount}) =
-"The XGBoost gradient boosting method, for use with "*
-"`Count` univariate targets, using a Poisson objective function. "
+function MMI.docstring(::Type{<:XGBoostCount})
+    "The XGBoost gradient boosting method, for use with `Count` univariate targets, using a Poisson objective function."
+end
 
 MMI.load_path(::Type{<:XGBoostClassifier}) = "$PKG.XGBoostClassifier"
 MMI.input_scitype(::Type{<:XGBoostClassifier}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostClassifier}) = AbstractVector{<:Finite}
-MMI.docstring(::Type{<:XGBoostClassifier}) =
-"The XGBoost gradient boosting method, for use with "*
-"`Finite` univariate targets (`Multiclass`, "*
-"`OrderedFactor` and `Binary=Finite{2}`)."
+function MMI.docstring(::Type{<:XGBoostClassifier})
+    "The XGBoost gradient boosting method, for use with `Finite` univariate targets \
+    (`Multiclass`, `OrderedFactor` and `Binary=Finite{2}`)."
+end
 
 
 include("docstrings.jl")
