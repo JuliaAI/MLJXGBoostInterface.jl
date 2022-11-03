@@ -135,11 +135,13 @@ function MMI.fit(model::XGBoostClassifier
     nclass = length(MMI.classes(a_target_element))
 
     objective = nclass == 2 ? "binary:logistic" : "multi:softprob"
+    # confusingly, xgboost only wants this set if using multi:softprob
+    num_class = nclass == 2 ? (;) : (num_class=nclass,)
 
     # libxgboost wants float labels
     dm = DMatrix(MMI.matrix(X), float(MMI.int(y) .- 1))
 
-    b = xgboost(dm; kwargs(model, verbosity, objective)..., num_class=nclass)
+    b = xgboost(dm; kwargs(model, verbosity, objective)..., num_class...)
     fr = (b, a_target_element)
 
     (fr, nothing, _getreport(b, model))
