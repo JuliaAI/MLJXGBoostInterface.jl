@@ -16,7 +16,7 @@ m = machine(model, X, y)
 where
 - `X`: any table of input features whose columns have `Continuous` element scitype; check 
   column scitypes with `schema(X)`.
-- `y`: is an `AbstractVector` continuous target.
+- `y`: is an `AbstractVector` target with `Continuous` elements; check the scitype with `scitype(y)`. 
 
 Train using `fit!(m, rows=...)`.
 
