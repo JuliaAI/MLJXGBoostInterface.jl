@@ -14,7 +14,8 @@ In `MLJ` or `MLJBase`, bind an instance `model` to data with
 m = machine(model, X, y)
 ```
 where
-- `X`: any table of input features, either an `AbstractMatrix` or Tables.jl-compatible table.
+- `X`: any table of input features whose columns have `Continuous` element scitype; check 
+  column scitypes with `schema(X)`.
 - `y`: is an `AbstractVector` continuous target.
 
 Train using `fit!(m, rows=...)`.
