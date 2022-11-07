@@ -121,10 +121,20 @@ function MMI.feature_importances(
         return [features[k] => first(v) for (k, v) in importance_dict]
 end
 
+function _feature_names(X, dmatrix)
+    schema = Tables.schema(X)
+     if schema === nothing
+        features = [Symbol("x$j") for j in 1:ncols(dmatrix)]
+    else
+        features = schema.names |> collect
+    end
+    return features
+end
+
 function MMI.fit(model::XGBoostAbstractRegressor, verbosity::Integer, X, y)
     dm = DMatrix(MMI.matrix(X), float(y))
     b = xgboost(dm; kwargs(model, verbosity, model.objective)...)
-    (b, nothing, _getreport(b, model))
+    (b, nothing, (features=_feature_names(X, dm),))
 end
 
 MMI.predict(model::XGBoostAbstractRegressor, fitresult, Xnew) = XGB.predict(fitresult, Xnew)
