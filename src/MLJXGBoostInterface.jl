@@ -5,6 +5,7 @@ using MLJModelInterface: Table, Continuous, Count, Finite, OrderedFactor, Multic
 
 const PKG = "MLJXGBoostInterface"
 
+import Tables
 using Tables: schema
 
 import XGBoost as XGB
@@ -15,6 +16,9 @@ import SparseArrays
 
 abstract type XGBoostAbstractRegressor <: MMI.Deterministic end
 abstract type XGBoostAbstractClassifier <: MMI.Probabilistic end
+
+const XGTypes = Union{XGBoostAbstractRegressor,XGBoostAbstractClassifier}
+
 
 function _fix_objective(obj)
     if obj ∈ ("squarederror", "squaredlogerror", "logistic", "pseudohubererror", "gamma", "tweedie")
@@ -86,7 +90,7 @@ function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, objvalida
             base_score::Float64 = 0.5
             watchlist = nothing  # if this is nothing we will not pass it so as to use default
             nthread::Int = Base.Threads.nthreads()::(_ ≥ 0)
-            importance_type::Union{Nothing,String} = "gain"
+            importance_type::String = "gain"
             seed::Union{Int,Nothing} = nothing  # nothing will use built in default
         end
 
@@ -100,7 +104,7 @@ function kwargs(model, verbosity::Integer, obj)
     excluded = [:importance_type]
     fn = filter(∉(excluded), fieldnames(typeof(model)))
     o = NamedTuple(n=>getfield(model, n) for n ∈ fn if !isnothing(getfield(model, n)))
-    o = merge(o, (silent=(verbosity == 0),))
+    o = merge(o, (silent=(verbosity ≤ 0),))
     merge(o, (objective=_fix_objective(obj),))
 end
 
@@ -109,16 +113,13 @@ function importances(X, r)
     [named_importance(fi, fs) for fi ∈ XGB.importance(r)]
 end
 
-function MMI.feature_importances(
-    model::Union{XGBoostAbstractRegressor, XGBoostAbstractClassifier}, 
-    (booster, _), 
-    (features,)
-)
-    importance_dict=XGB.importance(booster, model.importance_type)
+function MMI.feature_importances(model::XGTypes, (booster, _), (features,))
+    dict = XGB.importance(booster, model.importance_type)
     if length(last(first(importance_dict))) > 1
-        return [features[k] => zero(first(v)) for (k, v) in importance_dict]
+        [features[k] => zero(first(v)) for (k, v) in dict]
     else
-        return [features[k] => first(v) for (k, v) in importance_dict]
+        [features[k] => first(v) for (k, v) in dict]
+    end
 end
 
 function _feature_names(X, dmatrix)
@@ -207,8 +208,6 @@ MLJModelInterface.reports_feature_importances(::Type{XGBoostAbstractRegressor}) 
 MLJModelInterface.reports_feature_importances(::Type{XGBoostAbstractClassifier}) = true
 
 
-const XGTypes = Union{XGBoostAbstractRegressor,XGBoostAbstractClassifier}
-
 MMI.package_name(::Type{<:XGTypes}) = "XGBoost"
 MMI.package_uuid(::Type{<:XGTypes}) = "009559a3-9522-5dbb-924b-0b6ed2b22bb9"
 MMI.package_url(::Type{<:XGTypes}) = "https://github.com/dmlc/XGBoost.jl"
@@ -217,24 +216,17 @@ MMI.is_pure_julia(::Type{<:XGTypes}) = false
 MMI.load_path(::Type{<:XGBoostRegressor}) = "$PKG.XGBoostRegressor"
 MMI.input_scitype(::Type{<:XGBoostRegressor}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostRegressor}) = AbstractVector{Continuous}
-MMI.docstring(::Type{<:XGBoostRegressor}) =
-"The XGBoost gradient boosting method, for use with "*
-"`Continuous` univariate targets. "
+MMI.human_name(::Type{<:XGBoostRegressor}) = "eXtreme Gradient Boosting Regressor"
 
 MMI.load_path(::Type{<:XGBoostCount}) = "$PKG.XGBoostCount"
 MMI.input_scitype(::Type{<:XGBoostCount}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostCount}) = AbstractVector{Count}
-function MMI.docstring(::Type{<:XGBoostCount})
-    "The XGBoost gradient boosting method, for use with `Count` univariate targets, using a Poisson objective function."
-end
+MMI.human_name(::Type{<:XGBoostRegressor}) = "eXtreme Gradient Boosting Count Regressor"
 
 MMI.load_path(::Type{<:XGBoostClassifier}) = "$PKG.XGBoostClassifier"
 MMI.input_scitype(::Type{<:XGBoostClassifier}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostClassifier}) = AbstractVector{<:Finite}
-function MMI.docstring(::Type{<:XGBoostClassifier})
-    "The XGBoost gradient boosting method, for use with `Finite` univariate targets \
-    (`Multiclass`, `OrderedFactor` and `Binary=Finite{2}`)."
-end
+MMI.human_name(::Type{<:XGBoostRegressor}) = "eXtreme Gradient Boosting Classifier"
 
 
 include("docstrings.jl")

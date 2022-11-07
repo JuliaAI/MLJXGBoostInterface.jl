@@ -43,8 +43,6 @@ end
     fitresultR, cacheR, reportR = MLJBase.fit(plain_regressor, 0, features, labels)
     rpred = predict(plain_regressor, fitresultR, features);
     
-    importances = reportR.feature_importances
-    
     # serialization:
     serializable_fitresult = MLJBase.save(plain_regressor, fitresultR)
     
@@ -72,8 +70,6 @@ end
     @test cacheC == cacheC_
     @test reportC == reportC_
     cpred = predict(count_regressor, fitresultC, Xtable);
-    
-    importances = reportC.feature_importances
 end
 
 @testset "classifier" begin
@@ -92,8 +88,6 @@ end
     yhat = mode.(predict(plain_classifier, fitresult, selectrows(X, test)))
     misclassification_rate = sum(yhat .!= y[test])/length(test)
     @test misclassification_rate < 0.015
-    
-    importances = report.feature_importances
     
     # Multiclass{10} case:
     N=10
