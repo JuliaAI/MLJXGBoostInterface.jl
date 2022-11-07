@@ -152,7 +152,7 @@ function MMI.fit(model::XGBoostClassifier
     b = xgboost(dm; kwargs(model, verbosity, objective)..., num_class...)
     fr = (b, a_target_element)
 
-    (fr, nothing, _getreport(b, model))
+    (fr, nothing, (features=_feature_names(X, dm),))
 end
 
 function MMI.predict(model::XGBoostClassifier, fitresult, Xnew)
