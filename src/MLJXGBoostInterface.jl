@@ -109,8 +109,16 @@ function importances(X, r)
     [named_importance(fi, fs) for fi ∈ XGB.importance(r)]
 end
 
-function _getreport(b::Booster, model)
-    isnothing(model.importance_type) ? (;) : (feature_importances=XGB.importance(b, model.importance_type),)
+function MMI.feature_importances(
+    model::Union{XGBoostAbstractRegressor, XGBoostAbstractClassifier}, 
+    (booster, _), 
+    (features,)
+)
+    importance_dict=XGB.importance(booster, model.importance_type)
+    if length(last(first(importance_dict))) > 1
+        return [features[k] => zero(first(v)) for (k, v) in importance_dict]
+    else
+        return [features[k] => first(v) for (k, v) in importance_dict]
 end
 
 function MMI.fit(model::XGBoostAbstractRegressor, verbosity::Integer, X, y)
