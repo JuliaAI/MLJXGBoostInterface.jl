@@ -60,7 +60,7 @@ m = machine(model, X, y)
 ```
 where
 - `X`: any table of input features, either an `AbstractMatrix` or Tables.jl-compatible table.
-- `y`: is an `AbstractVector` continuous target.
+- `y`: is an `AbstractVector` `Finite` target.
 
 Train using `fit!(m, rows=...)`.
 
