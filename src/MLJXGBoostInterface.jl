@@ -100,7 +100,7 @@ end
 
 eval(modelexpr(:XGBoostRegressor, :XGBoostAbstractRegressor, "reg:squarederror", :validate_reg_objective))
 
-function kwargs(model, verbosity::Integer, obj)
+function kwargs(model, verbosity, obj)
     excluded = [:importance_type]
     fn = filter(∉(excluded), fieldnames(typeof(model)))
     o = NamedTuple(n=>getfield(model, n) for n ∈ fn if !isnothing(getfield(model, n)))
@@ -108,14 +108,9 @@ function kwargs(model, verbosity::Integer, obj)
     merge(o, (objective=_fix_objective(obj),))
 end
 
-function importances(X, r)
-    fs = schema(X).names
-    [named_importance(fi, fs) for fi ∈ XGB.importance(r)]
-end
-
 function MMI.feature_importances(model::XGTypes, (booster, _), (features,))
     dict = XGB.importance(booster, model.importance_type)
-    if length(last(first(importance_dict))) > 1
+    if length(last(first(dict))) > 1
         [features[k] => zero(first(v)) for (k, v) in dict]
     else
         [features[k] => first(v) for (k, v) in dict]
@@ -146,10 +141,10 @@ eval(modelexpr(:XGBoostCount, :XGBoostAbstractRegressor, "count:poisson", :valid
 
 eval(modelexpr(:XGBoostClassifier, :XGBoostAbstractClassifier, "automatic", :validate_class_objective))
 
-function MMI.fit(model::XGBoostClassifier
-                 , verbosity::Int     #> must be here even if unsupported in pkg
-                 , X
-                 , y)
+function MMI.fit(model::XGBoostClassifier,
+                 verbosity,  # must be here even if unsupported in pkg
+                 X, y,
+                )
     a_target_element = y[1] # a CategoricalValue or CategoricalString
     nclass = length(MMI.classes(a_target_element))
 
@@ -204,8 +199,8 @@ MMI.save(::XGBoostClassifier, fr; kw...) = (_save(fr[1]; kw...), fr[2])
 
 MMI.restore(::XGBoostClassifier, fr) = (_restore(fr[1]), fr[2])
 
-MLJModelInterface.reports_feature_importances(::Type{XGBoostAbstractRegressor}) = true
-MLJModelInterface.reports_feature_importances(::Type{XGBoostAbstractClassifier}) = true
+MLJModelInterface.reports_feature_importances(::Type{<:XGBoostAbstractRegressor}) = true
+MLJModelInterface.reports_feature_importances(::Type{<:XGBoostAbstractClassifier}) = true
 
 
 MMI.package_name(::Type{<:XGTypes}) = "XGBoost"

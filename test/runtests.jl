@@ -176,6 +176,9 @@ end
     mach = machine(plain_classifier, X, yclass)
     fit!(mach, verbosity=0)
     yhat = predict_mode(mach, X);
+
+    imps = feature_importances(mach)
+    @test Set(string.([imp[1] for imp ∈ imps])) == Set(["x1", "x2", "x3"])
     
     # serialize:
     io = IOBuffer()
