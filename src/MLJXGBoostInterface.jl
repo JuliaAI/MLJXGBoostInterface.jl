@@ -1,770 +1,207 @@
 module MLJXGBoostInterface
 
-export XGBoostRegressor, XGBoostClassifier, XGBoostCount
+import MLJModelInterface; const MMI = MLJModelInterface
+using MLJModelInterface: Table, Continuous, Count, Finite, OrderedFactor, Multiclass
 
-import MLJModelInterface
-import MLJModelInterface: Table, Continuous, Count, Finite, OrderedFactor,
-    Multiclass
+const PKG = "MLJXGBoostInterface"
 
-const PKG="MLJXGBoostInterface"
-const MMI = MLJModelInterface
+import Tables
+using Tables: schema
 
-import Tables: schema
+import XGBoost as XGB
+using XGBoost: DMatrix, Booster, xgboost
 
-import XGBoost
 import SparseArrays
 
-# helper for feature importances:
-# XGBoost used "f
-function named_importance(fi::XGBoost.FeatureImportance, features)
 
-    new_fname = features[parse(Int, fi.fname[2:end]) + 1] |> string
-    return XGBoost.FeatureImportance(new_fname, fi.gain, fi.cover, fi.freq)
-end
+abstract type XGBoostAbstractRegressor <: MMI.Deterministic end
+abstract type XGBoostAbstractClassifier <: MMI.Probabilistic end
+
+const XGTypes = Union{XGBoostAbstractRegressor,XGBoostAbstractClassifier}
 
 
-# TODO: Why do we need this?
-generate_seed() = mod(round(Int, time()*1e8), 10000)
-
-# helper to preprocess hyper-parameters:
-function kwargs(model, silent, seed, objective, eval_metric)
-
-    kwargs = (booster = model.booster
-              , silent = silent
-              , disable_default_eval_metric = model.disable_default_eval_metric
-              , eta = model.eta
-              , gamma = model.gamma
-              , max_depth = model.max_depth
-              , min_child_weight = model.min_child_weight
-              , max_delta_step = model.max_delta_step
-              , subsample = model.subsample
-              , colsample_bytree = model.colsample_bytree
-              , colsample_bylevel = model.colsample_bylevel
-              , lambda = model.lambda
-              , alpha = model.alpha
-              , tree_method = model.tree_method
-              , sketch_eps = model.sketch_eps
-              , scale_pos_weight = model.scale_pos_weight
-              , refresh_leaf = model.refresh_leaf
-              , process_type = model.process_type
-              , grow_policy = model.grow_policy
-              , max_leaves = model.max_leaves
-              , max_bin = model.max_bin
-              , predictor = model.predictor
-              , sample_type = model.sample_type
-              , normalize_type = model.normalize_type
-              , rate_drop = model.rate_drop
-              , one_drop = model.one_drop
-              , skip_drop = model.skip_drop
-              , feature_selector = model.feature_selector
-              , top_k = model.top_k
-              , tweedie_variance_power = model.tweedie_variance_power
-              , objective = objective
-              , base_score = model.base_score
-              , eval_metric=eval_metric
-              , seed = seed
-              , nthread = model.nthread) # MD
-
-    if model.updater != "auto"
-        return merge(kwargs, (updater=model.updater,))
+function _fix_objective(obj)
+    if obj ∈ ("squarederror", "squaredlogerror", "logistic", "pseudohubererror", "gamma", "tweedie")
+        "reg:"*obj
+    elseif obj ∈ ("logistic", "logitraw", "hinge")
+        "binary:"*obj
+    elseif obj ∈ ("softmax", "softprob")
+        "multi:"*obj
     else
-        return kwargs
+        obj
+    end
+end
+
+function _validate_objective(obj, startstrs)
+    obj = _fix_objective(obj)
+    if obj isa AbstractString
+        obj == "automatic" && return true
+        any(x -> startswith(obj, x), startstrs)
+    elseif obj isa Union{Function,Type}
+        true
+    else
+        false
+    end
+end
+
+validate_reg_objective(obj) = _validate_objective(obj, ("reg:", "survival:"))
+validate_count_objective(obj) = _validate_objective(obj, ("count:", "rank:"))
+validate_class_objective(obj) = _validate_objective(obj, ("binary:", "multi:"))
+
+
+function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, objvalidate::Symbol)
+    quote
+        MMI.@mlj_model mutable struct $name <: $absname
+            test::Int = 1::(_ ≥ 0)
+            num_round::Int = 100::(_ ≥ 0)  # this must be provided since XGBoost.jl doesn't provide it
+            booster::String = "gbtree"
+            disable_default_eval_metric::Union{Bool,Int} = 0
+            eta::Float64 = 0.3::(0.0 ≤ _ ≤ 1.0)
+            num_parallel_tree::Int = 1::(_ > 0)
+            gamma::Float64 = 0::(_ ≥ 0)
+            max_depth::Int = 6::(_ ≥ 0)
+            min_child_weight::Float64 = 1::(_ ≥ 0)
+            max_delta_step::Float64 = 0::(_ ≥ 0)
+            subsample::Float64 = 1::(0 < _ ≤ 1)
+            colsample_bytree::Float64 = 1::(0 < _ ≤ 1)
+            colsample_bylevel::Float64 = 1::(0 < _ ≤ 1)
+            colsample_bynode::Float64 = 1::(0 < _ ≤ 1)
+            lambda::Float64 = 1::(_ ≥ 0)
+            alpha::Float64 = 0::(_ ≥ 0)
+            tree_method::String = "auto"
+            sketch_eps::Float64 = 0.03::(0 < _ < 1)
+            scale_pos_weight::Float64 = 1
+            updater::Union{Nothing,String} = nothing  # this is more complicated and we don't want to set it
+            refresh_leaf::Union{Int,Bool} = 1
+            process_type::String = "default"
+            grow_policy::String = "depthwise"
+            max_leaves::Int = 0::(_ ≥ 0)
+            max_bin::Int = 256::(_ ≥ 0)
+            predictor::String = "cpu_predictor"
+            sample_type::String = "uniform"
+            normalize_type::String = "tree"
+            rate_drop::Float64 = 0::(0 ≤ _ ≤ 1)
+            one_drop::Union{Int,Bool} = 0::(0 ≤ _ ≤ 1)
+            skip_drop::Float64 = 0::(0 ≤ _ ≤ 1)
+            feature_selector::String = "cyclic"
+            top_k::Int = 0::(_ ≥ 0)
+            tweedie_variance_power::Float64 = 1.5::(1 < _ < 2)
+            objective = $obj :: $objvalidate(_)
+            base_score::Float64 = 0.5
+            watchlist = nothing  # if this is nothing we will not pass it so as to use default
+            nthread::Int = Base.Threads.nthreads()::(_ ≥ 0)
+            importance_type::String = "gain"
+            seed::Union{Int,Nothing} = nothing  # nothing will use built in default
+        end
+
     end
 end
 
 
-## REGRESSOR
+eval(modelexpr(:XGBoostRegressor, :XGBoostAbstractRegressor, "reg:squarederror", :validate_reg_objective))
 
-mutable struct XGBoostRegressor <:MMI.Deterministic
-    num_round::Int
-    booster::String
-    disable_default_eval_metric::Int
-    eta::Float64
-    gamma::Float64
-    max_depth::Int
-    min_child_weight::Float64
-    max_delta_step::Float64
-    subsample::Float64
-    colsample_bytree::Float64
-    colsample_bylevel::Float64
-    lambda::Float64
-    alpha::Float64
-    tree_method::String
-    sketch_eps::Float64
-    scale_pos_weight::Float64
-    updater::String
-    refresh_leaf::Union{Int,Bool}
-    process_type::String
-    grow_policy::String
-    max_leaves::Int
-    max_bin::Int
-    predictor::String
-    sample_type::String
-    normalize_type::String
-    rate_drop::Float64
-    one_drop
-    skip_drop::Float64
-    feature_selector::String
-    top_k::Int
-    tweedie_variance_power::Float64
-    objective
-    base_score::Float64
-    eval_metric
-    seed::Int
-    nthread::Int # MD
+function kwargs(model, verbosity, obj)
+    excluded = [:importance_type]
+    fn = filter(∉(excluded), fieldnames(typeof(model)))
+    o = NamedTuple(n=>getfield(model, n) for n ∈ fn if !isnothing(getfield(model, n)))
+    o = merge(o, (silent=(verbosity ≤ 0),))
+    merge(o, (objective=_fix_objective(obj),))
 end
 
-"""
-    XGBoostRegressor(; objective="linear", seed=0, kwargs...)
-
-The XGBoost model for univariate targets with `Continuous` element
-scitype. Gives deterministic (point) predictions. For possible values
-for `objective` and `kwargs`, see
-[https://xgboost.readthedocs.io/en/latest/parameter.html](https://xgboost.readthedocs.io/en/latest/parameter.html).
-
-For a time-dependent random seed, use `seed=-1`.
-
-See also: XGBoostCount, XGBoostClassifier
-
-"""
-function XGBoostRegressor(
-    ;num_round=100
-    ,booster="gbtree"
-    ,disable_default_eval_metric=0
-    ,eta=0.3
-    ,gamma=0
-    ,max_depth=6
-    ,min_child_weight=1
-    ,max_delta_step=0
-    ,subsample=1
-    ,colsample_bytree=1
-    ,colsample_bylevel=1
-    ,lambda=1
-    ,alpha=0
-    ,tree_method="auto"
-    ,sketch_eps=0.03
-    ,scale_pos_weight=1
-    ,updater="auto"
-    ,refresh_leaf=1
-    ,process_type="default"
-    ,grow_policy="depthwise"
-    ,max_leaves=0
-    ,max_bin=256
-    ,predictor="cpu_predictor" #> gpu version not currently working with Julia, maybe remove completely?
-    ,sample_type="uniform"
-    ,normalize_type="tree"
-    ,rate_drop=0.0
-    ,one_drop=0
-    ,skip_drop=0.0
-    ,feature_selector="cyclic"
-    ,top_k=0
-    ,tweedie_variance_power=1.5
-    ,objective="reg:squarederror"
-    ,base_score=0.5
-    ,eval_metric="rmse"
-    ,seed=0
-    ,nthread = 1)
-
-    model = XGBoostRegressor(
-    num_round
-    ,booster
-    ,disable_default_eval_metric
-    ,eta
-    ,gamma
-    ,max_depth
-    ,min_child_weight
-    ,max_delta_step
-    ,subsample
-    ,colsample_bytree
-    ,colsample_bylevel
-    ,lambda
-    ,alpha
-    ,tree_method
-    ,sketch_eps
-    ,scale_pos_weight
-    ,updater
-    ,refresh_leaf
-    ,process_type
-    ,grow_policy
-    ,max_leaves
-    ,max_bin
-    ,predictor #> gpu version not currently working with Julia, maybe remove completely?
-    ,sample_type
-    ,normalize_type
-    ,rate_drop
-    ,one_drop
-    ,skip_drop
-    ,feature_selector
-    ,top_k
-    ,tweedie_variance_power
-    ,objective
-    ,base_score
-    ,eval_metric
-    ,seed
-    ,nthread) #MD
-
-     message = MMI.clean!(model)
-     isempty(message) || @warn message
-
-    return model
-end
-
-function MMI.clean!(model::XGBoostRegressor)
-    warning = ""
-    if model.objective == "count:poisson"
-        warning *= "Your `objective` suggests prediction of a "*
-        "`Count` variable.\n You may want to consider XGBoostCount instead. "
-    elseif model.objective in ["reg:logistic", "binary:logistic",
-                               "binary:logitraw", "binary:hinge",
-                               "multi:softmax", "multi:softprob"]
-        warning *="Your `objective` suggests prediction of a "*
-        "`Finite` variable.\n You may want to consider XGBoostClassifier "*
-        "instead. "
+function MMI.feature_importances(model::XGTypes, (booster, _), (features,))
+    dict = XGB.importance(booster, model.importance_type)
+    if length(last(first(dict))) > 1
+        [features[k] => zero(first(v)) for (k, v) in dict]
+    else
+        [features[k] => first(v) for (k, v) in dict]
     end
-    return warning
 end
 
-# For `XGBoost.DMatrix(Xmatrix, y)` `Xmatrix` must either be a julia `Array` or
-# a `SparseMatrixCSC` while `y` must be a `Vector` 
-_to_array(x::Union{Array, SparseArrays.SparseMatrixCSC}) = x
-_to_array(x::AbstractArray) = copyto!(similar(Array{eltype(x)}, axes(x)), x) 
-
-function MMI.fit(model::XGBoostRegressor
-             , verbosity::Int
-             , X
-             , y)
-
-             silent =
-                 verbosity > 0 ?  false : true
-    Xmatrix = _to_array(MMI.matrix(X))
-    dm = XGBoost.DMatrix(Xmatrix, label=_to_array(y))
-
-    objective =
-        model.objective in ["linear", "gamma", "tweedie"] ?
-            "reg:"*model.objective : model.objective
-
-    seed =
-        model.seed == -1 ? generate_seed() : model.seed
-
-
-    fitresult = XGBoost.xgboost(dm, model.num_round;
-                                kwargs(model, silent, seed, objective,model.eval_metric)...)
-
-    features = schema(X).names
-    importances = [named_importance(fi, features) for
-                   fi in XGBoost.importance(fitresult)]
-    cache = nothing
-
-    report = (feature_importances=importances, )
-
-    return fitresult, cache, report
-
-end
-
-
-function MMI.predict(model::XGBoostRegressor
-        , fitresult
-        , Xnew)
-    Xmatrix = _to_array(MMI.matrix(Xnew))
-    return XGBoost.predict(fitresult, Xmatrix)
-end
-
-
-## COUNT REGRESSOR
-
-mutable struct XGBoostCount <:MMI.Deterministic
-    num_round::Int
-    booster::String
-    disable_default_eval_metric::Int
-    eta::Float64
-    gamma::Float64
-    max_depth::Int
-    min_child_weight::Float64
-    max_delta_step::Float64
-    subsample::Float64
-    colsample_bytree::Float64
-    colsample_bylevel::Float64
-    lambda::Float64
-    alpha::Float64
-    tree_method::String
-    sketch_eps::Float64
-    scale_pos_weight::Float64
-    updater::String
-    refresh_leaf::Union{Int,Bool}
-    process_type::String
-    grow_policy::String
-    max_leaves::Int
-    max_bin::Int
-    predictor::String
-    sample_type::String
-    normalize_type::String
-    rate_drop::Float64
-    one_drop
-    skip_drop::Float64
-    feature_selector::String
-    top_k::Int
-    tweedie_variance_power::Float64
-    objective
-    base_score::Float64
-    eval_metric
-    seed::Int
-    nthread::Int
-end
-
-
-"""
-    XGBoostCount(; seed=0, kwargs...)
-
-The XGBoost model for targets with `Count` scitype. Gives
-deterministic (point) predictions. For admissible `kwargs`, see
-[https://xgboost.readthedocs.io/en/latest/parameter.html](https://xgboost.readthedocs.io/en/latest/parameter.html).
-
-For a time-dependent random seed, use `seed=-1`.
-
-See also: XGBoostRegressor, XGBoostClassifier
-
-"""
-function XGBoostCount(
-    ;num_round=100
-    ,booster="gbtree"
-    ,disable_default_eval_metric=0
-    ,eta=0.3
-    ,gamma=0
-    ,max_depth=6
-    ,min_child_weight=1
-    ,max_delta_step=0
-    ,subsample=1
-    ,colsample_bytree=1
-    ,colsample_bylevel=1
-    ,lambda=1
-    ,alpha=0
-    ,tree_method="auto"
-    ,sketch_eps=0.03
-    ,scale_pos_weight=1
-    ,updater="auto"
-    ,refresh_leaf=1
-    ,process_type="default"
-    ,grow_policy="depthwise"
-    ,max_leaves=0
-    ,max_bin=256
-    ,predictor="cpu_predictor" #> gpu version not currently working with Julia, maybe remove completely?
-    ,sample_type="uniform"
-    ,normalize_type="tree"
-    ,rate_drop=0.0
-    ,one_drop=0
-    ,skip_drop=0.0
-    ,feature_selector="cyclic"
-    ,top_k=0
-    ,tweedie_variance_power=1.5
-    ,objective="count:poisson"
-    ,base_score=0.5
-    ,eval_metric="rmse"
-    ,seed=0
-    ,nthread = 1)
-
-    model = XGBoostCount(
-    num_round
-    ,booster
-    ,disable_default_eval_metric
-    ,eta
-    ,gamma
-    ,max_depth
-    ,min_child_weight
-    ,max_delta_step
-    ,subsample
-    ,colsample_bytree
-    ,colsample_bylevel
-    ,lambda
-    ,alpha
-    ,tree_method
-    ,sketch_eps
-    ,scale_pos_weight
-    ,updater
-    ,refresh_leaf
-    ,process_type
-    ,grow_policy
-    ,max_leaves
-    ,max_bin
-    ,predictor #> gpu version not currently working with Julia, maybe remove completely?
-    ,sample_type
-    ,normalize_type
-    ,rate_drop
-    ,one_drop
-    ,skip_drop
-    ,feature_selector
-    ,top_k
-    ,tweedie_variance_power
-    ,objective
-    ,base_score
-    ,eval_metric
-    ,seed
-    ,nthread)
-
-     message = MMI.clean!(model)
-     isempty(message) || @warn message
-
-    return model
-end
-
-function MMI.clean!(model::XGBoostCount)
-    warning = ""
-    if(!(model.objective in ["count:poisson"]))
-        warning *= "Changing objective to \"poisson\", "*
-                       "the only supported value. "
-        model.objective="poisson"
+function _feature_names(X, dmatrix)
+    schema = Tables.schema(X)
+     if schema === nothing
+        features = [Symbol("x$j") for j in 1:ncols(dmatrix)]
+    else
+        features = schema.names |> collect
     end
-    return warning
+    return features
 end
 
-function MMI.fit(model::XGBoostCount
-             , verbosity::Int     #> must be here even if unsupported in pkg
-             , X
-             , y)
-
-    silent = verbosity > 0 ?  false : true
-
-    Xmatrix = _to_array(MMI.matrix(X))
-    dm = XGBoost.DMatrix(Xmatrix, label=_to_array(y))
-
-    seed =
-        model.seed == -1 ? generate_seed() : model.seed
-
-    fitresult = XGBoost.xgboost(dm, model.num_round;
-                                kwargs(model, silent, seed, "count:poisson",model.eval_metric)...)
-    features = schema(X).names
-    importances = [named_importance(fi, features) for
-                   fi in XGBoost.importance(fitresult)]
-
-    cache = nothing
-    report = (feature_importances=importances, )
-
-    return fitresult, cache, report
-
+function MMI.fit(model::XGBoostAbstractRegressor, verbosity::Integer, X, y)
+    dm = DMatrix(MMI.matrix(X), float(y))
+    b = xgboost(dm; kwargs(model, verbosity, model.objective)...)
+    (b, nothing, (features=_feature_names(X, dm),))
 end
 
-function MMI.predict(model::XGBoostCount
-        , fitresult
-        , Xnew)
-    Xmatrix = _to_array(MMI.matrix(Xnew))
-    return XGBoost.predict(fitresult, Xmatrix)
-end
+MMI.predict(model::XGBoostAbstractRegressor, fitresult, Xnew) = XGB.predict(fitresult, Xnew)
 
 
-## CLASSIFIER
-
-mutable struct XGBoostClassifier <:MMI.Probabilistic
-    num_round::Int
-    booster::String
-    disable_default_eval_metric::Int
-    eta::Float64
-    gamma::Float64
-    max_depth::Int
-    min_child_weight::Float64
-    max_delta_step::Float64
-    subsample::Float64
-    colsample_bytree::Float64
-    colsample_bylevel::Float64
-    lambda::Float64
-    alpha::Float64
-    tree_method::String
-    sketch_eps::Float64
-    scale_pos_weight::Float64
-    updater::String
-    refresh_leaf::Union{Int,Bool}
-    process_type::String
-    grow_policy::String
-    max_leaves::Int
-    max_bin::Int
-    predictor::String
-    sample_type::String
-    normalize_type::String
-    rate_drop::Float64
-    one_drop
-    skip_drop::Float64
-    feature_selector::String
-    top_k::Int
-    tweedie_variance_power::Float64
-    objective
-    base_score::Float64
-    eval_metric
-    seed::Int
-    nthread::Int
-end
-
-"""
-    XGBoostClassifier(; seed=0, kwargs...)
-
-The XGBoost model for targets with `Finite` scitype (which includes
-`Binary=Finite{2}`). Gives probabilistic predictions. For admissible
-`kwargs`, see
-[https://xgboost.readthedocs.io/en/latest/parameter.html](https://xgboost.readthedocs.io/en/latest/parameter.html).
-
-For a time-dependent random seed, use `seed=-1`.
-
-See also: XGBoostCount, XGBoostRegressor
-
-"""
-function XGBoostClassifier(
-    ;num_round=100
-    ,booster="gbtree"
-    ,disable_default_eval_metric=0
-    ,eta=0.3
-    ,gamma=0
-    ,max_depth=6
-    ,min_child_weight=1
-    ,max_delta_step=0
-    ,subsample=1
-    ,colsample_bytree=1
-    ,colsample_bylevel=1
-    ,lambda=1
-    ,alpha=0
-    ,tree_method="auto"
-    ,sketch_eps=0.03
-    ,scale_pos_weight=1
-    ,updater="auto"
-    ,refresh_leaf=1
-    ,process_type="default"
-    ,grow_policy="depthwise"
-    ,max_leaves=0
-    ,max_bin=256
-    ,predictor="cpu_predictor" #> gpu version not currently working with Julia, maybe remove completely?
-    ,sample_type="uniform"
-    ,normalize_type="tree"
-    ,rate_drop=0.0
-    ,one_drop=0
-    ,skip_drop=0.0
-    ,feature_selector="cyclic"
-    ,top_k=0
-    ,tweedie_variance_power=1.5
-    ,objective="automatic"
-    ,base_score=0.5
-    ,eval_metric="mlogloss"
-    ,seed=0
-    ,nthread = 1)
-
-    model = XGBoostClassifier(
-    num_round
-    ,booster
-    ,disable_default_eval_metric
-    ,eta
-    ,gamma
-    ,max_depth
-    ,min_child_weight
-    ,max_delta_step
-    ,subsample
-    ,colsample_bytree
-    ,colsample_bylevel
-    ,lambda
-    ,alpha
-    ,tree_method
-    ,sketch_eps
-    ,scale_pos_weight
-    ,updater
-    ,refresh_leaf
-    ,process_type
-    ,grow_policy
-    ,max_leaves
-    ,max_bin
-    ,predictor #> gpu version not currently working with Julia, maybe remove completely?
-    ,sample_type
-    ,normalize_type
-    ,rate_drop
-    ,one_drop
-    ,skip_drop
-    ,feature_selector
-    ,top_k
-    ,tweedie_variance_power
-    ,objective
-    ,base_score
-    ,eval_metric
-    ,seed
-    ,nthread)
-
-     message = MMI.clean!(model)           #> future proof by including these
-     isempty(message) || @warn message #> two lines even if no clean! defined below
-
-    return model
-end
+eval(modelexpr(:XGBoostCount, :XGBoostAbstractRegressor, "count:poisson", :validate_count_objective))
 
 
-function MMI.clean!(model::XGBoostClassifier)
-    warning = ""
-    if(!(model.objective =="automatic"))
-            warning *="Changing objective to \"automatic\", the only supported value. "
-            model.objective="automatic"
-    end
-    return warning
-end
+eval(modelexpr(:XGBoostClassifier, :XGBoostAbstractClassifier, "automatic", :validate_class_objective))
 
-function MMI.fit(model::XGBoostClassifier
-                     , verbosity::Int     #> must be here even if unsupported in pkg
-                     , X
-                     , y)
-    Xmatrix = _to_array(MMI.matrix(X))
-
+function MMI.fit(model::XGBoostClassifier,
+                 verbosity,  # must be here even if unsupported in pkg
+                 X, y,
+                )
     a_target_element = y[1] # a CategoricalValue or CategoricalString
-    num_class = length(MMI.classes(a_target_element))
+    nclass = length(MMI.classes(a_target_element))
 
-    # The eval metric is different depending on the class size.
-    eval_metric = model.eval_metric
-    if num_class == 2 && eval_metric == "mlogloss"
-        eval_metric = "logloss"
-    end
-    if num_class > 2 && eval_metric == "logloss"
-        eval_metric = "mlogloss"
-    end
+    objective = nclass == 2 ? "binary:logistic" : "multi:softprob"
+    # confusingly, xgboost only wants this set if using multi:softprob
+    num_class = nclass == 2 ? (;) : (num_class=nclass,)
 
-    y_plain_ = MMI.int(y) .- 1 # integer relabeling should start at 0
+    # libxgboost wants float labels
+    dm = DMatrix(MMI.matrix(X), float(MMI.int(y) .- 1))
 
-    if(num_class==2)
-        objective="binary:logistic"
-        y_plain_ = convert(Array{Bool}, y_plain_)
-    else
-        objective="multi:softprob"
-    end
-    
-    y_plain = _to_array(y_plain_)
+    b = xgboost(dm; kwargs(model, verbosity, objective)..., num_class...)
+    fr = (b, a_target_element)
 
-    silent =
-        verbosity > 0 ?  false : true
-
-    seed =
-        model.seed == -1 ? generate_seed() : model.seed
-
-    if num_class == 2
-        # XGBoost API requires that num_class is not passed in when n=2.
-        result = XGBoost.xgboost(Xmatrix, label=y_plain, model.num_round;
-                             kwargs(model, silent, seed, objective,eval_metric)...)
-    else
-        result = XGBoost.xgboost(Xmatrix, label=y_plain, model.num_round;
-                                 num_class=num_class,
-                                 kwargs(model, silent, seed, objective,eval_metric)...)
-    end
-    fitresult = (result, a_target_element)
-
-    features = schema(X).names
-
-    importances = [named_importance(fi, features) for
-                   fi in XGBoost.importance(result)]
-
-    cache = nothing
-    report = (feature_importances=importances, )
-
-    return fitresult, cache, report
-
+    (fr, nothing, (features=_feature_names(X, dm),))
 end
 
-
-function MMI.predict(model::XGBoostClassifier
-        , fitresult
-        , Xnew)
-
-    result, a_target_element = fitresult
+function MMI.predict(model::XGBoostClassifier, fitresult, Xnew)
+    (result, a_target_element) = fitresult
     decode = MMI.decoder(a_target_element)
     classes = MMI.classes(a_target_element)
 
-    Xmatrix = _to_array(MMI.matrix(Xnew))
-    XGBpredictions = XGBoost.predict(result, Xmatrix)
+    o = XGB.predict(result, MMI.matrix(Xnew))
 
     nlevels = length(classes)
     npatterns = MMI.nrows(Xnew)
 
     if nlevels == 2
-        true_class_probabilities = reshape(XGBpredictions, 1, npatterns)
+        true_class_probabilities = reshape(o, 1, npatterns)
         false_class_probabilities = 1 .- true_class_probabilities
-        XGBpredictions = vcat(false_class_probabilities, true_class_probabilities)
+        o = vcat(false_class_probabilities, true_class_probabilities)
     end
 
-    prediction_probabilities = reshape(XGBpredictions, nlevels, npatterns)
+    prediction_probabilities = reshape(o, nlevels, npatterns)
 
     # note we use adjoint of above:
-    predictions = MMI.UnivariateFinite(classes, prediction_probabilities')
-
-    return predictions
+    MMI.UnivariateFinite(classes, prediction_probabilities')
 end
 
 
 # # SERIALIZATION
 
 
-# ## Helpers
+_save(fr; kw...) = XGB.save(fr, Vector{UInt8}; kw...)
 
-"""
-    persistent(booster)
+_restore(fr) = XGB.load(Booster, fr)
 
-Private method.
+MMI.save(::XGBoostAbstractRegressor, fr; kw...) = _save(fr; kw...)
 
-Return a persistent (ie, Julia-serializable) representation of the
-XGBoost.jl model `booster`.
+MMI.restore(::XGBoostAbstractRegressor, fr; kw...) = _restore(fr)
 
-Restore the model with [`booster`](@ref)
+MMI.save(::XGBoostClassifier, fr; kw...) = (_save(fr[1]; kw...), fr[2])
 
-"""
-function persistent(booster)
+MMI.restore(::XGBoostClassifier, fr) = (_restore(fr[1]), fr[2])
 
-    # this implemenation is not ideal; see
-    # https://github.com/dmlc/XGBoost.jl/issues/103
+MLJModelInterface.reports_feature_importances(::Type{<:XGBoostAbstractRegressor}) = true
+MLJModelInterface.reports_feature_importances(::Type{<:XGBoostAbstractClassifier}) = true
 
-    xgb_file, io = mktemp()
-    close(io)
-
-    XGBoost.save(booster, xgb_file)
-    persistent_booster = read(xgb_file)
-    rm(xgb_file)
-    return persistent_booster
-end
-
-"""
-    booster(persistent)
-
-Private method.
-
-Return the XGBoost.jl model which has `persistent` as its persistent
-(Julia-serializable) representation. See [`persistent`](@ref) method.
-
-"""
-function booster(persistent)
-
-    xgb_file, io = mktemp()
-    write(io, persistent)
-    close(io)
-    booster = XGBoost.Booster(model_file=xgb_file)
-    rm(xgb_file)
-
-    return booster
-end
-
-
-# ## Regressor and Count
-
-const XGBoostInfinite = Union{XGBoostRegressor,XGBoostCount}
-
-MLJModelInterface.save(::XGBoostInfinite, fitresult; kwargs...) =
-    persistent(fitresult)
-
-MLJModelInterface.restore(::XGBoostInfinite, serializable_fitresult) =
-                          booster(serializable_fitresult)
-
-
-# ## Classifier
-
-function MLJModelInterface.save(::XGBoostClassifier,
-                                fitresult;
-                                kwargs...)
-    booster, a_target_element = fitresult
-    return (persistent(booster), a_target_element)
-end
-
-function MLJModelInterface.restore(::XGBoostClassifier,
-                                   serializable_fitresult)
-    persistent, a_target_element = serializable_fitresult
-    return (booster(persistent), a_target_element)
-end
-
-
-## METADATA
-
-XGTypes=Union{XGBoostRegressor,XGBoostCount,XGBoostClassifier}
 
 MMI.package_name(::Type{<:XGTypes}) = "XGBoost"
 MMI.package_uuid(::Type{<:XGTypes}) = "009559a3-9522-5dbb-924b-0b6ed2b22bb9"
@@ -774,23 +211,23 @@ MMI.is_pure_julia(::Type{<:XGTypes}) = false
 MMI.load_path(::Type{<:XGBoostRegressor}) = "$PKG.XGBoostRegressor"
 MMI.input_scitype(::Type{<:XGBoostRegressor}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostRegressor}) = AbstractVector{Continuous}
-MMI.docstring(::Type{<:XGBoostRegressor}) =
-    "The XGBoost gradient boosting method, for use with "*
-    "`Continuous` univariate targets. "
+MMI.human_name(::Type{<:XGBoostRegressor}) = "eXtreme Gradient Boosting Regressor"
 
 MMI.load_path(::Type{<:XGBoostCount}) = "$PKG.XGBoostCount"
 MMI.input_scitype(::Type{<:XGBoostCount}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostCount}) = AbstractVector{Count}
-MMI.docstring(::Type{<:XGBoostCount}) =
-    "The XGBoost gradient boosting method, for use with "*
-    "`Count` univariate targets, using a Poisson objective function. "
+MMI.human_name(::Type{<:XGBoostRegressor}) = "eXtreme Gradient Boosting Count Regressor"
 
 MMI.load_path(::Type{<:XGBoostClassifier}) = "$PKG.XGBoostClassifier"
 MMI.input_scitype(::Type{<:XGBoostClassifier}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostClassifier}) = AbstractVector{<:Finite}
-MMI.docstring(::Type{<:XGBoostClassifier}) =
-    "The XGBoost gradient boosting method, for use with "*
-    "`Finite` univariate targets (`Multiclass`, "*
-    "`OrderedFactor` and `Binary=Finite{2}`)."
+MMI.human_name(::Type{<:XGBoostRegressor}) = "eXtreme Gradient Boosting Classifier"
+
+
+include("docstrings.jl")
+
+
+export XGBoostRegressor, XGBoostClassifier, XGBoostCount
+
 
 end # module
