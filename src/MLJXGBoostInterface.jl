@@ -216,12 +216,12 @@ MMI.human_name(::Type{<:XGBoostRegressor}) = "eXtreme Gradient Boosting Regresso
 MMI.load_path(::Type{<:XGBoostCount}) = "$PKG.XGBoostCount"
 MMI.input_scitype(::Type{<:XGBoostCount}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostCount}) = AbstractVector{Count}
-MMI.human_name(::Type{<:XGBoostRegressor}) = "eXtreme Gradient Boosting Count Regressor"
+MMI.human_name(::Type{<:XGBoostCount}) = "eXtreme Gradient Boosting Count Regressor"
 
 MMI.load_path(::Type{<:XGBoostClassifier}) = "$PKG.XGBoostClassifier"
 MMI.input_scitype(::Type{<:XGBoostClassifier}) = Table(Continuous)
 MMI.target_scitype(::Type{<:XGBoostClassifier}) = AbstractVector{<:Finite}
-MMI.human_name(::Type{<:XGBoostRegressor}) = "eXtreme Gradient Boosting Classifier"
+MMI.human_name(::Type{<:XGBoostClassifier}) = "eXtreme Gradient Boosting Classifier"
 
 
 include("docstrings.jl")
