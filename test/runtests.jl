@@ -2,7 +2,7 @@ using MLJBase
 using Test
 import XGBoost
 using MLJXGBoostInterface
-using MLJTestIntegration
+using MLJTestInterface
 using Distributions
 import StableRNGs
 const rng = StableRNGs.StableRNG(123)
@@ -194,9 +194,9 @@ end
 
 @testset "generic interface tests" begin
     @testset "XGBoostRegressor" begin
-        failures, summary = MLJTestIntegration.test(
+        failures, summary = MLJTestInterface.test(
             [XGBoostRegressor,],
-            MLJTestIntegration.make_regression()...;
+            MLJTestInterface.make_regression()...;
             mod=@__MODULE__,
             verbosity=0, # bump to debug
             throw=false, # set to true to debug
@@ -204,9 +204,9 @@ end
         @test isempty(failures)
     end
     @testset "XGBoostCount" begin
-        failures, summary = MLJTestIntegration.test(
+        failures, summary = MLJTestInterface.test(
             [XGBoostCount],
-            MLJTestIntegration.make_count()...;
+            MLJTestInterface.make_count()...;
             mod=@__MODULE__,
             verbosity=0, # bump to debug
             throw=false, # set to true to debug
@@ -215,10 +215,10 @@ end
     end
     @testset "XGBoostClassifier" begin
         for data in [
-            MLJTestIntegration.make_binary(),
-            MLJTestIntegration.make_multiclass(),
+            MLJTestInterface.make_binary(),
+            MLJTestInterface.make_multiclass(),
         ]
-            failures, summary = MLJTestIntegration.test(
+            failures, summary = MLJTestInterface.test(
                 [XGBoostClassifier],
                 data...;
                 mod=@__MODULE__,
