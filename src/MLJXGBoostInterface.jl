@@ -107,7 +107,7 @@ function kwargs(model, verbosity, obj)
     o = merge(o, (silent=(verbosity ≤ 0),))
     # watchlist is for log output, so override if it's default and verbosity ≤ 0
     wl = (verbosity ≤ 0 && isnothing(model.watchlist)) ? (;) : model.watchlist
-    o = merge(o, (watchlist=wl,))
+    isnothing(wl) || (o = merge(o, (watchlist=wl,)))
     merge(o, (objective=_fix_objective(obj),))
 end
 
