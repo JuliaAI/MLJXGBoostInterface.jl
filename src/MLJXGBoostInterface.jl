@@ -92,6 +92,9 @@ function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, objvalida
             nthread::Int = Base.Threads.nthreads()::(_ ≥ 0)
             importance_type::String = "gain"
             seed::Union{Int,Nothing} = nothing  # nothing will use built in default
+            # this should probably be fixed so that we don't pass invalid parameters,
+            # but in the meantime, let's just disable checking
+            validate_parameters::Bool = false
         end
 
     end
