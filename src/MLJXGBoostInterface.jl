@@ -114,8 +114,7 @@ function kwargs(model, verbosity, obj)
     merge(o, (objective=_fix_objective(obj),))
 end
 
-function MMI.feature_importances(model::XGTypes, booster, (features,))
-    booster isa Tuple && (booster = booster[1])
+function MMI.feature_importances(model::XGTypes, (booster, _), (features,))
     dict = XGB.importance(booster, model.importance_type)
     if length(last(first(dict))) > 1
         [features[k] => zero(first(v)) for (k, v) in dict]
@@ -137,7 +136,8 @@ end
 function MMI.fit(model::XGBoostAbstractRegressor, verbosity::Integer, X, y)
     dm = DMatrix(MMI.matrix(X), float(y))
     b = xgboost(dm; kwargs(model, verbosity, model.objective)...)
-    (b, nothing, (features=_feature_names(X, dm),))
+    # first return value is a tuple for consistancy with classifier case
+    ((b, nothing), nothing, (features=_feature_names(X, dm),))
 end
 
 MMI.predict(model::XGBoostAbstractRegressor, fitresult, Xnew) = XGB.predict(fitresult, Xnew)
