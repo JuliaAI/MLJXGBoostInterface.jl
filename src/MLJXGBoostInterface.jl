@@ -114,7 +114,8 @@ function kwargs(model, verbosity, obj)
     merge(o, (objective=_fix_objective(obj),))
 end
 
-function MMI.feature_importances(model::XGTypes, (booster, _), (features,))
+function MMI.feature_importances(model::XGTypes, booster, (features,))
+    booster isa Tuple && (booster = booster[1])
     dict = XGB.importance(booster, model.importance_type)
     if length(last(first(dict))) > 1
         [features[k] => zero(first(v)) for (k, v) in dict]

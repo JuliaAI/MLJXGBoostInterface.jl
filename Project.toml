@@ -1,7 +1,7 @@
 name = "MLJXGBoostInterface"
 uuid = "54119dfa-1dab-4055-a167-80440f4f7a91"
 authors = ["Anthony D. Blaom <anthony.blaom@gmail.com>"]
-version = "0.3.6"
+version = "0.3.7"
 
 [deps]
 MLJModelInterface = "e80e1ace-859a-464e-9ed9-23947d8ae3ea"
