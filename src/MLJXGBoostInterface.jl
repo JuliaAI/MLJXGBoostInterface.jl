@@ -190,13 +190,9 @@ _save(fr; kw...) = XGB.save(fr, Vector{UInt8}; kw...)
 
 _restore(fr) = XGB.load(Booster, fr)
 
-MMI.save(::XGBoostAbstractRegressor, fr; kw...) = _save(fr; kw...)
+MMI.save(::XGTypes, fr; kw...) = (_save(fr[1]; kw...), fr[2])
 
-MMI.restore(::XGBoostAbstractRegressor, fr; kw...) = _restore(fr)
-
-MMI.save(::XGBoostClassifier, fr; kw...) = (_save(fr[1]; kw...), fr[2])
-
-MMI.restore(::XGBoostClassifier, fr) = (_restore(fr[1]), fr[2])
+MMI.restore(::XGTypes, fr) = (_restore(fr[1]), fr[2])
 
 MLJModelInterface.reports_feature_importances(::Type{<:XGBoostAbstractRegressor}) = true
 MLJModelInterface.reports_feature_importances(::Type{<:XGBoostAbstractClassifier}) = true
