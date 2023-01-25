@@ -140,7 +140,7 @@ function MMI.fit(model::XGBoostAbstractRegressor, verbosity::Integer, X, y)
     ((b, nothing), nothing, (features=_feature_names(X, dm),))
 end
 
-MMI.predict(model::XGBoostAbstractRegressor, fitresult, Xnew) = XGB.predict(fitresult, Xnew)
+MMI.predict(model::XGBoostAbstractRegressor, (booster, _), Xnew) = XGB.predict(booster, Xnew)
 
 
 eval(modelexpr(:XGBoostCount, :XGBoostAbstractRegressor, "count:poisson", :validate_count_objective))
