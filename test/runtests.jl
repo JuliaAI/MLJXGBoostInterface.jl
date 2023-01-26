@@ -153,6 +153,9 @@ end
     fit!(mach, verbosity=0)
     yhat = predict(mach, Xtable)
 
+    imps = feature_importances(mach)
+    @test Set(string.([imp[1] for imp ∈ imps])) == Set(["x1", "x2", "x3"])
+
     # serialize:
     io = IOBuffer()
     MLJBase.save(io, mach)
