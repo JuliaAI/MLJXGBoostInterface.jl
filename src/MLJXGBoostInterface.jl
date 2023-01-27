@@ -114,23 +114,22 @@ function kwargs(model, verbosity, obj)
     merge(o, (objective=_fix_objective(obj),))
 end
 
-function MMI.feature_importances(model::XGTypes, (booster, _), (features,))
+function MMI.feature_importances(model::XGTypes, (booster, _), r)
     dict = XGB.importance(booster, model.importance_type)
     if length(last(first(dict))) > 1
-        [features[k] => zero(first(v)) for (k, v) in dict]
+        [r.features[k] => zero(first(v)) for (k, v) in dict]
     else
-        [features[k] => first(v) for (k, v) in dict]
+        [r.features[k] => first(v) for (k, v) in dict]
     end
 end
 
 function _feature_names(X, dmatrix)
     schema = Tables.schema(X)
      if schema === nothing
-        features = [Symbol("x$j") for j in 1:ncols(dmatrix)]
+        [Symbol("x$j") for j in 1:ncols(dmatrix)]
     else
-        features = schema.names |> collect
+        schema.names |> collect
     end
-    return features
 end
 
 function MMI.fit(model::XGBoostAbstractRegressor, verbosity::Integer, X, y)

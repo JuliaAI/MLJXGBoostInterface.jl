@@ -48,6 +48,9 @@ end
 
     restored_fitresult = MLJBase.restore(plain_regressor, serializable_fitresult)
     @test predict(plain_regressor, restored_fitresult, features) ≈ rpred
+
+    imps = feature_importances(plain_regressor, fitresultR, reportR)
+    @test Set(string.([imp[1] for imp ∈ imps])) == Set(string.(("x",), 1:5))
 end
 
 @testset "count" begin
@@ -70,6 +73,13 @@ end
     @test cacheC == cacheC_
     @test reportC == reportC_
     cpred = predict(count_regressor, fitresultC, Xtable);
+
+    imps = feature_importances(count_regressor, fitresultC, reportC)
+    @test Set(string.([imp[1] for imp ∈ imps])) == Set(string.(("x",), 1:3))
+
+    ser = MLJBase.save(count_regressor, fitresultC)
+    restored_fitresult = MLJBase.restore(count_regressor, ser)
+    @test predict(count_regressor, restored_fitresult, Xtable) ≈ cpred
 end
 
 @testset "classifier" begin
@@ -178,7 +188,7 @@ end
     yhat = predict_mode(mach, X);
 
     imps = feature_importances(mach)
-    @test Set(string.([imp[1] for imp ∈ imps])) == Set(["x1", "x2", "x3"])
+    @test Set(string.([imp[1] for imp ∈ imps])) == Set(string.(("x",), 1:3))
 
     # serialize:
     io = IOBuffer()
