@@ -95,6 +95,7 @@ function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, objvalida
             # this should probably be fixed so that we don't pass invalid parameters,
             # but in the meantime, let's just disable checking
             validate_parameters::Bool = false
+            eval_metric::Vector{String} = String[]
         end
 
     end
