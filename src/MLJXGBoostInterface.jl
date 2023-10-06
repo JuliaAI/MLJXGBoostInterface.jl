@@ -126,7 +126,7 @@ end
 
 function _feature_names(X, dmatrix)
     schema = Tables.schema(X)
-     if schema === nothing
+    if schema === nothing
         [Symbol("x$j") for j in 1:ncols(dmatrix)]
     else
         schema.names |> collect
@@ -170,13 +170,8 @@ end
 
 function MMI.predict(model::XGBoostClassifier, fitresult, Xnew)
     (result, a_target_element) = fitresult
-    decode = MMI.decoder(a_target_element)
     classes = MMI.classes(a_target_element)
-
     o = XGB.predict(result, MMI.matrix(Xnew))
-
-    nlevels = length(classes)
-    npatterns = MMI.nrows(Xnew)
 
     # XGB can return a rank-1 array for binary classification
     MMI.UnivariateFinite(classes, o, augment=ndims(o)==1)
