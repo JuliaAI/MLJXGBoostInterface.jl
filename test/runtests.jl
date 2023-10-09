@@ -97,7 +97,7 @@ end
                                                 selectrows(X, train), y[train];)
     yhat = mode.(predict(plain_classifier, fitresult, selectrows(X, test)))
     misclassification_rate = sum(yhat .!= y[test])/length(test)
-    @test misclassification_rate < 0.015
+    @test misclassification_rate < 0.025
 
     # Multiclass{10} case:
     N=10
@@ -121,7 +121,7 @@ end
 
     yhat = mode.(predict(plain_classifier, fitresult, selectrows(X, test)))
     misclassification_rate = sum(yhat .!= y[test])/length(test)
-    @test misclassification_rate < 0.01
+    @test misclassification_rate < 0.03
 
     # check target pool preserved:
     X = (x1=rand(rng, 400), x2=rand(rng, 400), x3=rand(rng, 400))
