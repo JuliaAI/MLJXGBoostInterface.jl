@@ -107,12 +107,15 @@ eval(modelexpr(:XGBoostRegressor, :XGBoostAbstractRegressor, "reg:squarederror",
 function kwargs(model, verbosity, obj)
     excluded = [:importance_type]
     fn = filter(∉(excluded), fieldnames(typeof(model)))
-    o = NamedTuple(n=>getfield(model, n) for n ∈ fn if !isnothing(getfield(model, n)))
-    o = merge(o, (silent=(verbosity ≤ 0),))
+    out = NamedTuple(n=>getfield(model, n) for n ∈ fn if !isnothing(getfield(model, n)))
+    out = merge(out, (silent=(verbosity ≤ 0),))
     # watchlist is for log output, so override if it's default and verbosity ≤ 0
     wl = (verbosity ≤ 0 && isnothing(model.watchlist)) ? (;) : model.watchlist
-    isnothing(wl) || (o = merge(o, (watchlist=wl,)))
-    merge(o, (objective=_fix_objective(obj),))
+    if !isnothing(wl)
+        out = merge(out, (watchlist=wl,))
+    end
+    out = merge(out, (objective=_fix_objective(obj),))
+    return out
 end
 
 function MMI.feature_importances(model::XGTypes, (booster, _), r)
