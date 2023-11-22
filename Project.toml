@@ -1,7 +1,7 @@
 name = "MLJXGBoostInterface"
 uuid = "54119dfa-1dab-4055-a167-80440f4f7a91"
 authors = ["Anthony D. Blaom <anthony.blaom@gmail.com>"]
-version = "0.3.9"
+version = "0.3.10"
 
 [deps]
 MLJModelInterface = "e80e1ace-859a-464e-9ed9-23947d8ae3ea"
@@ -12,7 +12,7 @@ XGBoost = "009559a3-9522-5dbb-924b-0b6ed2b22bb9"
 [compat]
 MLJModelInterface = "1.5"
 Tables = "1.0.5"
-XGBoost = "2.0.1 - 2.4.1"
+XGBoost = "2.0.1"
 julia = "1.6"
 
 [extras]
