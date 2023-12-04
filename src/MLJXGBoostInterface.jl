@@ -88,7 +88,7 @@ function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, objvalida
             tweedie_variance_power::Float64 = 1.5::(1 < _ < 2)
             objective = $obj :: $objvalidate(_)
             base_score::Float64 = 0.5
-	        early_stopping_rounds::Int = 0::(_ ≥ 0)
+            early_stopping_rounds::Int = 0::(_ ≥ 0)
             watchlist = nothing  # if this is nothing we will not pass it so as to use default
             nthread::Int = Base.Threads.nthreads()::(_ ≥ 0)
             importance_type::String = "gain"
