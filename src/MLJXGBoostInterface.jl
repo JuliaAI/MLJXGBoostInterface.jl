@@ -88,7 +88,7 @@ function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, objvalida
             tweedie_variance_power::Float64 = 1.5::(1 < _ < 2)
             objective = $obj :: $objvalidate(_)
             base_score::Float64 = 0.5
-	    early_stopping_rounds::Int = 0::(_ ≥ 0)
+	        early_stopping_rounds::Int = 0::(_ ≥ 0)
             watchlist = nothing  # if this is nothing we will not pass it so as to use default
             nthread::Int = Base.Threads.nthreads()::(_ ≥ 0)
             importance_type::String = "gain"
@@ -144,8 +144,8 @@ function MMI.fit(model::XGBoostAbstractRegressor, verbosity::Integer, X, y)
     ((b, nothing), nothing, (features=_feature_names(X, dm),))
 end
 
-MMI.predict(model::XGBoostAbstractRegressor, (booster, _), Xnew) = XGB.predict(booster, Xnew)
-
+MMI.predict(model::XGBoostAbstractRegressor, (booster, _), Xnew) = XGB.predict(booster, Xnew, 
+    ntree_limit = !ismissing(booster.best_iteration) ? booster.best_iteration : 0)
 
 eval(modelexpr(:XGBoostCount, :XGBoostAbstractRegressor, "count:poisson", :validate_count_objective))
 
@@ -175,12 +175,8 @@ end
 function MMI.predict(model::XGBoostClassifier, fitresult, Xnew)
     (result, a_target_element) = fitresult
     classes = MMI.classes(a_target_element)
-    if !ismissing(result.best_iteration)
-        # we can utilise the best iteration based off early stopping rounds
-        o = XGB.predict(result, MMI.matrix(Xnew), ntree_limit = result.best_iteration)
-    else
-        o = XGB.predict(result, MMI.matrix(Xnew))
-    end
+    # we can utilise the best iteration based off early stopping rounds
+    o = XGB.predict(result, MMI.matrix(Xnew), ntree_limit = !ismissing(result.best_iteration) ? result.best_iteration : 0)
 
     # XGB can return a rank-1 array for binary classification
     MMI.UnivariateFinite(classes, o, augment=ndims(o)==1)
