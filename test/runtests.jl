@@ -223,6 +223,9 @@ end
 end
 
 @testset "generic interface tests" begin
+    @testset "Default Early Stopping Params" begin
+        @test XGBoostRegressor().early_stopping_rounds == 0
+    end
     @testset "XGBoostRegressor" begin
         failures, summary = MLJTestInterface.test(
             [XGBoostRegressor,],
