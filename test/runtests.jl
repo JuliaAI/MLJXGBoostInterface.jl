@@ -51,6 +51,24 @@ end
 
     imps = feature_importances(plain_regressor, fitresultR, reportR)
     @test Set(string.([imp[1] for imp ∈ imps])) == Set(string.(("x",), 1:5))
+
+    # test regressor for early stopping rounds
+    # add some noise to create more differentiator in the evaluation metric to test if it chose the correct ntree_limit
+    mod_labels = labels + rand(Float64, 1000) * 10
+    es_regressor = XGBoostRegressor(num_round = 250, early_stopping_rounds = 20, eta = 0.5, max_depth = 20, 
+        eval_metric = ["mae"], watchlist = Dict("train" => XGBoost.DMatrix(features, mod_labels)))
+    (fitresultR, cacheR, reportR) = MLJBase.fit(es_regressor, 0, features, mod_labels)
+    rpred = predict(es_regressor, fitresultR, features);
+    @test abs(mean(abs.(rpred-mod_labels)) - fitresultR[1].best_score) < 1e-8
+    @test !ismissing(fitresultR[1].best_iteration)
+    
+    # try without early stopping (should be worse given the generated dataset) - to make sure it's a fair comparison - set early_stopping_rounds = num_round
+    nes_regressor = XGBoostRegressor(num_round = 250, early_stopping_rounds = 250, eta = 0.5, max_depth = 20, 
+        eval_metric = ["mae"], watchlist = Dict("train" => XGBoost.DMatrix(features, mod_labels)))
+    (fitresultR, cacheR, reportR) = MLJBase.fit(nes_regressor, 0, features, mod_labels)
+    rpred_noES = predict(es_regressor, fitresultR, features);
+    @test abs(mean(abs.(rpred-mod_labels))) < abs(mean(abs.(rpred_noES-mod_labels)))
+    @test ismissing(fitresultR[1].best_iteration)
 end
 
 @testset "count" begin
@@ -203,6 +221,9 @@ end
 end
 
 @testset "generic interface tests" begin
+    @testset "Default Early Stopping Params" begin
+        @test XGBoostRegressor().early_stopping_rounds == 0
+    end
     @testset "XGBoostRegressor" begin
         failures, summary = MLJTestInterface.test(
             [XGBoostRegressor,],
