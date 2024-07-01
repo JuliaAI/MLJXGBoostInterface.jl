@@ -109,13 +109,21 @@ function kwargs(model, verbosity, obj)
     excluded = [:importance_type]
     fn = filter(∉(excluded), fieldnames(typeof(model)))
     out = NamedTuple(n=>getfield(model, n) for n ∈ fn if !isnothing(getfield(model, n)))
-    out = merge(out, (silent=(verbosity ≤ 0),))
-    # watchlist is for log output, so override if it's default and verbosity ≤ 0
-    wl = (verbosity ≤ 0 && isnothing(model.watchlist)) ? (;) : model.watchlist
-    if !isnothing(wl)
-        out = merge(out, (watchlist=wl,))
+
+    # `watchlist` needs to be consistent with `verbosity`. If you don't pass
+    # `watchlist=(;)` in the case of unspecified `watchlist`, then logging will happen no
+    # matter what the value of `verbosity`!
+    watchlist = (verbosity ≤ 0 && isnothing(model.watchlist)) ? (;) : model.watchlist
+    if !isnothing(watchlist)
+        out = merge(out, (; watchlist))
     end
-    out = merge(out, (objective=_fix_objective(obj),))
+
+    # need `0 ≤ verbosity ≤ 3`:
+    verbosity = min(max(verbosity, 0), 3)
+
+    objective=_fix_objective(obj)
+    out = merge(out, (; verbosity, objective))
+
     return out
 end
 
