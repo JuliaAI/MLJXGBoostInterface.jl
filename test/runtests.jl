@@ -4,8 +4,8 @@ import XGBoost
 using MLJXGBoostInterface
 using MLJTestInterface
 using Distributions
-import StableRNGs
-const rng = StableRNGs.StableRNG(123)
+using StableRNGs
+const rng = StableRNG(123)
 
 @test_logs (:warn, r"Constraint ") XGBoostClassifier(objective="wrong")
 @test_logs (:warn, r"Constraint ") XGBoostCount(objective="wrong")
@@ -54,7 +54,7 @@ end
 
     # test regressor for early stopping rounds
     # add some noise to create more differentiator in the evaluation metric to test if it chose the correct ntree_limit
-    mod_labels = labels + rand(Float64, 1000) * 10
+    mod_labels = labels + rand(StableRNG(123), Float64, 1000) * 10
     es_regressor = XGBoostRegressor(num_round = 250, early_stopping_rounds = 20, eta = 0.5, max_depth = 20, 
         eval_metric = ["mae"], watchlist = Dict("train" => XGBoost.DMatrix(features, mod_labels)))
     (fitresultR, cacheR, reportR) = MLJBase.fit(es_regressor, 0, features, mod_labels)
