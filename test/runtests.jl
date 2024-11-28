@@ -189,6 +189,13 @@ end
     fit!(mach, verbosity=0)
     yhat = predict(mach, Xtable)
 
+    weight = rand(length(ycount))
+    mach_withweight = machine(count_regressor, Xtable, ycount, weight)
+    fit!(mach_withweight, verbosity=0)
+    yhat_withweight = predict(mach, Xtable)
+
+    @test yhat !≈ yhat_withweight
+
     # serialize:
     io = IOBuffer()
     MLJBase.save(io, mach)
