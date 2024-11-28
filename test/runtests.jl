@@ -192,7 +192,7 @@ end
     weight = rand(length(ycount))
     mach_withweight = machine(count_regressor, Xtable, ycount, weight)
     fit!(mach_withweight, verbosity=0)
-    yhat_withweight = predict(mach, Xtable)
+    yhat_withweight = predict(mach_withweight, Xtable)
 
     @test yhat !≈ yhat_withweight
 
