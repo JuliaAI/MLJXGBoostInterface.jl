@@ -194,7 +194,7 @@ end
     fit!(mach_withweight, verbosity=0)
     yhat_withweight = predict(mach_withweight, Xtable)
 
-    @test yhat !≈ yhat_withweight
+    @test !(yhat ≈ yhat_withweight)
 
     # serialize:
     io = IOBuffer()
