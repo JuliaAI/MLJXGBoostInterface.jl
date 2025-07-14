@@ -97,6 +97,7 @@ function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, objvalida
             # but in the meantime, let's just disable checking
             validate_parameters::Bool = false
             eval_metric::Vector{String} = String[]
+            monotone_constraints::Union{Nothing,String} = nothing
         end
 
     end

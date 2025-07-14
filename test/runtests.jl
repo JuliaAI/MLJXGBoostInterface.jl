@@ -77,6 +77,37 @@ end
     rpred_noES = predict(es_regressor, fitresultR, features);
     @test abs(mean(abs.(rpred-mod_labels))) < abs(mean(abs.(rpred_noES-mod_labels)))
     @test ismissing(fitresultR[1].best_iteration)
+
+
+    # Create synthetic data with 3 features
+    n = 200
+    X = (x1 = randn(n), x2 = randn(n), x3 = randn(n))
+    
+    # Target: positively dependent on all features
+    y = 2 .* X.x1 .+ 3 .* X.x2 .+ 1.5 .* X.x3 .+ 0.1 .* randn(n)
+
+    X_tbl = MLJBase.table(X)
+
+    # Model with negative monotone constraints
+    model_neg = XGBoostRegressor(num_round=20, monotone_constraints="(-1,-1,-1)")
+    mach_neg = machine(model_neg, X_tbl, y)
+    fit!(mach_neg, verbosity=0)
+    yhat_neg = predict(mach_neg, X_tbl)
+
+    # Model with positive monotone constraints (should perform better)
+    model_pos = XGBoostRegressor(num_round=20, monotone_constraints="(1,1,1)")
+    mach_pos = machine(model_pos, X_tbl, y)
+    fit!(mach_pos, verbosity=0)
+    yhat_pos = predict(mach_pos, X_tbl)
+
+    rmse = (ŷ, y) -> sqrt(mean((ŷ .- y).^2))
+    rmse_neg = rmse(yhat_neg, y)
+    rmse_pos = rmse(yhat_pos, y)
+
+    @test rmse_neg > 2 * rmse_pos
+
+    @test mach_pos.model.monotone_constraints == "(1,1,1)"
+    @test mach_neg.model.monotone_constraints == "(-1,-1,-1)"
 end
 
 @testset "count" begin
@@ -239,6 +270,9 @@ end
     @testset "Default Early Stopping Params" begin
         @test XGBoostRegressor().early_stopping_rounds == 0
     end
+    @testset "Default monotone constraints" begin
+        @test isnothing(XGBoostRegressor().monotone_constraints)
+    end
     @testset "XGBoostRegressor" begin
         failures, summary = MLJTestInterface.test(
             [XGBoostRegressor,],
@@ -275,3 +309,4 @@ end
         end
     end
 end
+
