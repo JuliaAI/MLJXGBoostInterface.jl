@@ -69,6 +69,7 @@ function modelexpr(name::Symbol, absname::Symbol, obj::AbstractString, objvalida
             lambda::Float64 = 1::(_ ≥ 0)
             alpha::Float64 = 0::(_ ≥ 0)
             tree_method::String = "auto"
+            device::String = "cpu"
             sketch_eps::Float64 = 0.03::(0 < _ < 1)
             scale_pos_weight::Float64 = 1
             updater::Union{Nothing,String} = nothing  # this is more complicated and we don't want to set it
@@ -205,11 +206,16 @@ end
 
 _save(fr; kw...) = XGB.save(fr, Vector{UInt8}; kw...)
 
-_restore(fr) = XGB.load(Booster, fr)
+# `XGB.save` doesn't store runtime parameters like `device`, so we re-apply them:
+function _restore(fr, model)
+    b = XGB.load(Booster, fr)
+    XGB.setparams!(b; device=model.device, tree_method=model.tree_method)
+    b
+end
 
 MMI.save(::XGTypes, fr; kw...) = (_save(fr[1]; kw...), fr[2])
 
-MMI.restore(::XGTypes, fr) = (_restore(fr[1]), fr[2])
+MMI.restore(model::XGTypes, fr) = (_restore(fr[1], model), fr[2])
 
 MMI.reports_feature_importances(::Type{<:XGBoostAbstractRegressor}) = true
 MMI.reports_feature_importances(::Type{<:XGBoostAbstractClassifier}) = true
