@@ -266,6 +266,17 @@ end
     @test predict_mode(mach2, X) == yhat
 end
 
+# MLJ.jl issue #1146
+@testset "restore keeps runtime parameters" begin
+    model = XGBoostRegressor(num_round=5, tree_method="approx")
+    X = MLJBase.table(rand(rng, 100, 3))
+    y = rand(rng, 100)
+    fitresult, _, _ = MLJBase.fit(model, 0, X, y)
+    booster, _ = MLJBase.restore(model, MLJBase.save(model, fitresult))
+    @test get(booster.params, :tree_method, nothing) == "approx"
+    @test get(booster.params, :device, nothing) == "cpu"
+end
+
 @testset "generic interface tests" begin
     @testset "Default Early Stopping Params" begin
         @test XGBoostRegressor().early_stopping_rounds == 0
